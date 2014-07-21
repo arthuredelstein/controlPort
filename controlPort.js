@@ -116,8 +116,8 @@ tor.controlPort = function (host, port) {
   var onData = io.onDataFromOnLine(tor.onLineFromOnMessage(console.log)),
       socket = io.asyncSocket(host, port, onData),
       write = function (text) { socket.write(text + "\r\n"); };
-      write("authenticate");
+  write("authenticate");
   //write("setevents circ stream");
-  return { close : socket.close , socket : socket , write : write };
+  return { close : socket.close , write : write };
 };
 
