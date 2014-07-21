@@ -102,3 +102,13 @@ io.asyncLineSocket = function (host, port, onInputLine) {
   return { write : write, close : close };
 };
 
+var controlPort = function (host, port) {
+  var socket = io.asyncLineSocket(host, port, console.log);
+  socket.write("authenticate");
+  socket.write("setevents circ");
+  return { close : socket.close };
+};
+
+var x = 3;
+
+
