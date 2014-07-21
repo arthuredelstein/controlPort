@@ -58,8 +58,10 @@ var asyncSocket = function (host, port, onInputData) {
 // CRLF before being sent to the socket.
 //
 // Example:
-// `var socket = asyncLineSocket("127.0.0.1", 9151, console.log);
-// socket.log("authenticate");`
+//
+//     var socket = asyncLineSocket("127.0.0.1", 9151, console.log);
+//     socket.log("authenticate");
+//     socket.close();
 var asyncLineSocket = function (host, port, onInputLine) {
   // A private variable that stores the last unfinished line.
   var pendingData = "";
@@ -80,6 +82,7 @@ var asyncLineSocket = function (host, port, onInputLine) {
       { write : dataWrite, close : close } = asyncSocket(host, port, onData),
       // Wrap the write function to ensure that argument is terminated with CRLF.
       write = function(lineString) { dataWrite(lineString + "\r\n"); };
+  // Return the promised text-line-oriented socket object.
   return { write : write, close : close };
 };
 
