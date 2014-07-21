@@ -5,7 +5,9 @@
 // with docco.js to provide clear documentation.
 
 /* jshint moz: true */
+/* jshint -W097*/
 /* global Components */
+"use strict";
 
 // ### Mozilla Abbreviations
 var {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu } = Components;
@@ -78,7 +80,7 @@ io.asyncSocket = function (host, port, onInputData) {
 io.asyncLineSocket = function (host, port, onInputLine) {
   // A private variable that stores the last unfinished line.
   var pendingData = "";
-  // A callback to be passed to asyncSocket. Splits data into lines of text, which are
+  // A callback to be passed to io.asyncSocket. Splits data into lines of text, which are
   // passed to onInputLine. If the incoming data is not terminated by CRLF, then the last
   // unfinished line will be stored in pendingData, to be prepended to the data in the
   // next call to onData. The lines of text are then passed to onInputLine.
@@ -92,7 +94,7 @@ io.asyncLineSocket = function (host, port, onInputLine) {
         }
       },
       // Generate the raw asynchronous socket.
-      { write : dataWrite, close : close } = asyncSocket(host, port, onData),
+      { write : dataWrite, close : close } = io.asyncSocket(host, port, onData),
       // Wrap the write function to ensure that argument is terminated with CRLF.
       write = function(lineString) { dataWrite(lineString + "\r\n"); };
   // Return the promised text-line-oriented socket object.
