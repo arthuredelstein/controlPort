@@ -83,7 +83,8 @@ io.asyncLineSocket = function (host, port, onInputLine) {
   // A callback to be passed to io.asyncSocket. Splits data into lines of text, which are
   // passed to onInputLine. If the incoming data is not terminated by CRLF, then the last
   // unfinished line will be stored in pendingData, to be prepended to the data in the
-  // next call to onData. The lines of text are then passed to onInputLine.
+  // next call to onData. The complete lines of text are then passed in sequence
+  // to onInputLine.
   var onData = function (data) {
         var totalData = pendingData + data,
             lines = totalData.split("\r\n"),
