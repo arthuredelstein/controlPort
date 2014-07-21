@@ -18,19 +18,9 @@ var asyncSocket = function (host, port, onInputData) {
       inputStream = socketTransport.openInputStream(2, 1, 1).QueryInterface(Ci.nsIAsyncInputStream),
       // Wrap inputStream with a "ScriptableInputStream" so we can read incoming data.
       scriptableInputStream = new ScriptableInputStream(inputStream),
-      // Wrap outputStream.write to make a single-argument write(text) method.
-      write = function(aString) {
-        outputStream.write(aString, aString.length);
-      },
       // A private method to read all data available on the socket.
       readAll = function() {
         return scriptableInputStream.read(scriptableInputStream.available());
-      },
-      // A close function that closes all streams.
-      close = function () {
-        scriptableInputStream.close();
-        inputStream.close();
-        outputStream.close();
       },
       // Creates an "input stream pump" that takes an input stream and asynchronously
       // pumps incoming data to an "stream listener".
@@ -46,8 +36,46 @@ var asyncSocket = function (host, port, onInputData) {
                      onDataAvailable : function( request, context, stream, offset, count) {
                        onInputData(readAll());    
                      }}, null);
+  return { 
+           // Wrap outputStream.write to make a single-argument write(text) method.
+           write : function(aString) {
+             outputStream.write(aString, aString.length);
+           },
+           // A close function that closes all stream objects.
+           close : function () {
+             scriptableInputStream.close();
+             inputStream.close();
+             outputStream.close();
+           }
+         };
+};
+           
+// __asyncLineSocket(host, port, onInputLine)__.
+// Creates an asynchronous, text-line-oriented TCP socket at host:port.
+// The onInputLine callback should accept a single argument, which will be called
+// repeatedly, whenever a line of text arrives. Returns a socket object with two methods:
+// write(textLine) and close(). The argument to the write method will be appended with
+// CRLF before being sent to the socket.
+var asyncLineSocket = function (host, port, onInputLine) {
+  // A private variable that stores the last unfinished line.
+  var pendingData = "";
+  // A callback to be passed to asyncSocket. Splits data into lines of text, which are
+  // passed to onInputLine. If the incoming data is not terminated by CRLF, then the last
+  // unfinished line will be stored in pendingData, to be prepended to the data in the
+  // next call to onData. The lines of text are then passed to onInputLine.
+  var onData = function (data) {
+        var totalData = pendingData + data,
+            lines = totalData.split("\r\n"),
+            n = lines.length;
+        pendingData = lines[n - 1];
+        for (var i = 0; i < n - 1; ++i) {
+          onInputLine(lines[i]);
+        }
+      },
+      // Generate the raw asynchronous socket.
+      { write : dataWrite, close : close } = asyncSocket(host, port, onData),
+      // Wrap the write function to ensure that argument is terminated with CRLF.
+      write = function(lineString) { dataWrite(lineString + "\r\n"); };
   return { write : write, close : close };
-}
-               
-               
-//var writeLine = function(lineString) { write(lineString + "\r\n"); };
+};
+
