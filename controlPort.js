@@ -1,11 +1,24 @@
+// A script for TorBrowser that provides a simple socket client for Tor's ControlPort.
+//
+// This file is written in call stack order (later functions
+// call earlier functions). The code file can be processed
+// with docco.js to provide clear documentation.
+
+/* jshint moz: true */
+/* global Components */
+
+// ### Mozilla Abbreviations
 var {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu } = Components;
 
-// __asyncSocket(host, port, onInputData)__.
+// ## I/O utilities namespace
+var io = io || {};
+
+// __io.asyncSocket(host, port, onInputData)__.
 // Creates an asynchronous, text-oriented TCP socket at host:port.
 // The onInputData callback should accept a single argument, which will be called
 // repeatedly, whenever incoming text arrives. Returns a socket object with two methods:
 // write(text) and close().
-var asyncSocket = function (host, port, onInputData) {
+io.asyncSocket = function (host, port, onInputData) {
   // Load two Mozilla utilities.
   var socketTransportService = Cc["@mozilla.org/network/socket-transport-service;1"]
            .getService(Components.interfaces.nsISocketTransportService),
@@ -62,7 +75,7 @@ var asyncSocket = function (host, port, onInputData) {
 //     var socket = asyncLineSocket("127.0.0.1", 9151, console.log);
 //     socket.log("authenticate");
 //     socket.close();
-var asyncLineSocket = function (host, port, onInputLine) {
+io.asyncLineSocket = function (host, port, onInputLine) {
   // A private variable that stores the last unfinished line.
   var pendingData = "";
   // A callback to be passed to asyncSocket. Splits data into lines of text, which are
