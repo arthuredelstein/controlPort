@@ -56,6 +56,10 @@ var asyncSocket = function (host, port, onInputData) {
 // repeatedly, whenever a line of text arrives. Returns a socket object with two methods:
 // write(textLine) and close(). The argument to the write method will be appended with
 // CRLF before being sent to the socket.
+//
+// Example:
+// `var socket = asyncLineSocket("127.0.0.1", 9151, console.log);
+// socket.log("authenticate");`
 var asyncLineSocket = function (host, port, onInputLine) {
   // A private variable that stores the last unfinished line.
   var pendingData = "";
