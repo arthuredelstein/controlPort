@@ -7,12 +7,13 @@
 /* jshint moz: true */
 /* jshint -W097*/
 /* global Components */
-"use strict";
+// "use strict";
 
 // ### Mozilla Abbreviations
 var {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu } = Components;
 
-// ## I/O utilities namespace
+// ## io
+// I/O utilities namespace
 var io = io || {};
 
 // __io.asyncSocket(host, port, onInputData)__.
@@ -30,7 +31,8 @@ io.asyncSocket = function (host, port, onInputData) {
       socketTransport = socketTransportService.createTransport(null, 0, host, port, null),
       // Open asynchronous outputStream and inputStream.
       outputStream = socketTransport.openOutputStream(2, 1, 1),
-      inputStream = socketTransport.openInputStream(2, 1, 1).QueryInterface(Ci.nsIAsyncInputStream),
+      inputStream = socketTransport.openInputStream(2, 1, 1)
+                      .QueryInterface(Ci.nsIAsyncInputStream),
       // Wrap inputStream with a "ScriptableInputStream" so we can read incoming data.
       scriptableInputStream = new ScriptableInputStream(inputStream),
       // A private method to read all data available on the socket.
@@ -48,11 +50,10 @@ io.asyncSocket = function (host, port, onInputData) {
     // an nsIStreamListener. 
     pump.asyncRead({ onStartRequest: function (request, context) { },
                      onStopRequest: function (request, context, code) { },
-                     onDataAvailable : function( request, context, stream, offset, count) {
+                     onDataAvailable : function (request, context, stream, offset, count) {
                        onInputData(readAll());    
-                     }}, null);
-  return { 
-           // Wrap outputStream.write to make a single-argument write(text) method.
+                     } }, null);
+  return { // Wrap outputStream.write to make a single-argument write(text) method.
            write : function(aString) {
              outputStream.write(aString, aString.length);
            },
@@ -61,54 +62,62 @@ io.asyncSocket = function (host, port, onInputData) {
              scriptableInputStream.close();
              inputStream.close();
              outputStream.close();
-           }
-         };
+           } };
 };
            
-// __asyncLineSocket(host, port, onInputLine)__.
-// Creates an asynchronous, text-line-oriented TCP socket at host:port.
-// The onInputLine callback should accept a single argument, which will be called
-// repeatedly, whenever a line of text arrives. Returns a socket object with two methods:
-// write(textLine) and close(). The argument to the write method will be appended with
-// CRLF before being sent to the socket.
-//
-// Example:
-//
-//     var socket = asyncLineSocket("127.0.0.1", 9151, console.log);
-//     socket.log("authenticate");
-//     socket.close();
-io.asyncLineSocket = function (host, port, onInputLine) {
+// __io.onDataFromOnLine(onLine)__.
+// Converts a callback that expects incoming individual lines of text to a callback that
+// expects incoming raw socket data.
+io.onDataFromOnLine = function (onLine) {
   // A private variable that stores the last unfinished line.
   var pendingData = "";
-  // A callback to be passed to io.asyncSocket. Splits data into lines of text, which are
-  // passed to onInputLine. If the incoming data is not terminated by CRLF, then the last
+  // Return a callback to be passed to io.asyncSocket. First, splits data into lines of 
+  // text. If the incoming data is not terminated by CRLF, then the last
   // unfinished line will be stored in pendingData, to be prepended to the data in the
-  // next call to onData. The complete lines of text are then passed in sequence
-  // to onInputLine.
-  var onData = function (data) {
-        var totalData = pendingData + data,
-            lines = totalData.split("\r\n"),
-            n = lines.length;
-        pendingData = lines[n - 1];
-        for (var i = 0; i < n - 1; ++i) {
-          onInputLine(lines[i]);
-        }
-      },
-      // Generate the raw asynchronous socket.
-      { write : dataWrite, close : close } = io.asyncSocket(host, port, onData),
-      // Wrap the write function to ensure that argument is terminated with CRLF.
-      write = function(lineString) { dataWrite(lineString + "\r\n"); };
-  // Return the promised text-line-oriented socket object.
-  return { write : write, close : close };
+  // next call to onData. The already complete lines of text are then passed in sequence
+  // to onLine.
+  return function (data) {
+    var totalData = pendingData + data,
+        lines = totalData.split("\r\n"),
+        n = lines.length;
+    pendingData = lines[n - 1];
+    for (var i = 0; i < n - 1; ++i) {
+      onLine(lines[i]);
+    }
+  }
 };
 
-var controlPort = function (host, port) {
-  var socket = io.asyncLineSocket(host, port, console.log);
-  socket.write("authenticate");
-  socket.write("setevents circ");
-  return { close : socket.close };
+// ## tor
+// Namespace for tor-specific functions
+var tor = tor || {};
+
+// __tor.onLineFromOnMessage(onMessage)__.
+// Converts a callback that expects incoming control port multiline message strings to a
+// callback that expects individual lines.
+tor.onLineFromOnMessage = function (onMessage) {
+  // A private variable that stores the last unfinished line.
+  var pendingLines = [];
+  // Return a callback that expects individual lines.
+  return function (line) {
+    // Add to the list of pending lines.
+    pendingLines.push(line);
+    // If line is the last in a message, then pass on the full multiline message.
+    if (line.match(/^\d\d\d /)) {
+      onMessage(pendingLines.join("\r\n"));
+      // Get ready for the next message.
+      pendingLines = [];
+    }
+  }
 };
 
-var x = 3;
-
+// __tor.controPort__.
+// Beginnings of the main control port factory.
+tor.controlPort = function (host, port) {
+  var onData = io.onDataFromOnLine(tor.onLineFromOnMessage(console.log)),
+      socket = io.asyncSocket(host, port, onData),
+      write = function (text) { socket.write(text + "\r\n"); };
+      write("authenticate");
+  //write("setevents circ stream");
+  return { close : socket.close , socket : socket , write : write };
+};
 
