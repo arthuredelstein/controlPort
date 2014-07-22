@@ -81,10 +81,9 @@ io.onDataFromOnLine = function (onLine) {
         lines = totalData.split("\r\n"),
         n = lines.length;
     pendingData = lines[n - 1];
-    for (var i = 0; i < n - 1; ++i) {
-      onLine(lines[i]);
-    }
-  }
+    // Call onLine for all completed lines.
+    lines.slice(0,-1).forEach(onLine);
+  };
 };
 
 // ## tor
@@ -113,11 +112,24 @@ tor.onLineFromOnMessage = function (onMessage) {
 // __tor.controPort__.
 // Beginnings of the main control port factory.
 tor.controlPort = function (host, port) {
-  var onData = io.onDataFromOnLine(tor.onLineFromOnMessage(console.log)),
+  var messageHandlers = [],
+      onMessage = function (message) {
+        console.log(message);
+        for each (let [regex, handleMessage] in messageHandlers) {
+          if (message.match(regex)) {
+            handleMessage(message);
+          }
+        }
+      },
+      registerMessageHandler = function (regex, handleMessage) {
+        messageHandlers.push([regex, handleMessage]);
+      },
+      onData = io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage)),
       socket = io.asyncSocket(host, port, onData),
       write = function (text) { socket.write(text + "\r\n"); };
   write("authenticate");
   //write("setevents circ stream");
-  return { close : socket.close , write : write };
+  return { close : socket.close , write : write ,
+           registerMessageHandler : registerMessageHandler};
 };
 
