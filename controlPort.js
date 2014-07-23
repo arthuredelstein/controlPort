@@ -6,8 +6,8 @@
 
 /* jshint moz: true */
 /* jshint -W097*/
-/* global Components */
-// "use strict";
+/* global Components, console */
+'use strict';
 
 // ### Mozilla Abbreviations
 var {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu } = Components;
@@ -20,7 +20,7 @@ var io = io || {};
 // Creates an asynchronous, text-oriented TCP socket at host:port.
 // The onInputData callback should accept a single argument, which will be called
 // repeatedly, whenever incoming text arrives. Returns a socket object with two methods:
-// write(text) and close().
+// socket.write(text) and socket.close().
 io.asyncSocket = function (host, port, onInputData) {
   // Load two Mozilla utilities.
   var socketTransportService = Cc["@mozilla.org/network/socket-transport-service;1"]
@@ -39,26 +39,27 @@ io.asyncSocket = function (host, port, onInputData) {
       readAll = function() {
         return scriptableInputStream.read(scriptableInputStream.available());
       },
-      // Creates an "input stream pump" that takes an input stream and asynchronously
-      // pumps incoming data to an "stream listener".
+      // Create an "input stream pump" that takes an input stream and asynchronously
+      // pumps incoming data to a "stream listener."
       pump = Cc["@mozilla.org/network/input-stream-pump;1"]
                .createInstance(Components.interfaces.nsIInputStreamPump);
     // Start the pump.
     pump.init(inputStream, -1, -1, 0, 0, true);
     // Tell the pump to read all data whenever it is available, and pass the data
-    // to the onInputData callback. The first argument to asyncRead is implementing
-    // an nsIStreamListener. 
+    // to the onInputData callback. The first argument to asyncRead implements
+    // nsIStreamListener. 
     pump.asyncRead({ onStartRequest: function (request, context) { },
                      onStopRequest: function (request, context, code) { },
                      onDataAvailable : function (request, context, stream, offset, count) {
                        onInputData(readAll());    
                      } }, null);
-  return { // Wrap outputStream.write to make a single-argument write(text) method.
+  return { // Write a message to the socket.
            write : function(aString) {
              outputStream.write(aString, aString.length);
            },
-           // A close function that closes all stream objects.
+           // Close the socket.
            close : function () {
+             // Close all stream objects.
              scriptableInputStream.close();
              inputStream.close();
              outputStream.close();
@@ -67,7 +68,7 @@ io.asyncSocket = function (host, port, onInputData) {
            
 // __io.onDataFromOnLine(onLine)__.
 // Converts a callback that expects incoming individual lines of text to a callback that
-// expects incoming raw socket data.
+// expects incoming raw socket string data.
 io.onDataFromOnLine = function (onLine) {
   // A private variable that stores the last unfinished line.
   var pendingData = "";
@@ -86,6 +87,61 @@ io.onDataFromOnLine = function (onLine) {
   };
 };
 
+// __io.callbackDispatcher()__.
+// Returns [onString, dispatcher] where the latter is an object with two member functions:
+// dispatcher.addCallback(regex, callback), and dispatcher.removeCallback(callback).
+// Pass onString to another function that needs a callback with a single string argument.
+// Whenever dispatcher.onString receives a string, the dispatcher will check for any
+// regex matches and pass the string on to the corresponding callback(s).
+io.callbackDispatcher = function () {
+  var callbackPairs = [],
+      removeCallback = function (aCallback) {
+        callbackPairs = callbackPairs.filter(function ([regex, callback]) {
+          return callback !== aCallback;
+        });
+      },
+      addCallback = function (regex, callback) {
+        if (callback) {
+          callbackPairs.push([regex, callback]);
+        }
+        return function () { removeCallback(callback); };
+      },
+      onString = function (message) {
+        for (let [regex, callback] of callbackPairs) {
+          if (message.match(regex)) {
+            callback(message);
+          } 
+        }
+      };
+  return [onString, {addCallback : addCallback, removeCallback : removeCallback}];
+};
+
+// __io.interleaveCommandsAndReplies(asyncSend)__.
+// Takes asyncSend(message), an asynchronous send function, and returns two functions
+// sendCommand(command, replyCallback) and onReply(response). Ensures that asyncSend will
+// be called only after we have received a response to the previous asyncSend call through onReply.
+io.interleaveCommandsAndReplies = function (asyncSend) {
+  var commandQueue = [],
+      sendCommand = function (command, replyCallback) {
+        commandQueue.push([command, replyCallback]);
+        if (commandQueue.length == 1) {
+          // No pending replies; send command immediately.
+          asyncSend(command);
+        }
+      },
+      onReply = function (reply) {
+        console.log("A", commandQueue.slice());
+        var [command, replyCallback] = commandQueue.shift();
+        if (replyCallback) { replyCallback(command + ":" + reply); }
+        if (commandQueue.length > 0) {
+          console.log("B", commandQueue.slice());
+          var [nextCommand, nextReplyCallback] = commandQueue[0];
+          asyncSend(nextCommand);
+        }
+      };  
+  return [sendCommand, onReply];
+};
+
 // ## tor
 // Namespace for tor-specific functions
 var tor = tor || {};
@@ -101,35 +157,29 @@ tor.onLineFromOnMessage = function (onMessage) {
     // Add to the list of pending lines.
     pendingLines.push(line);
     // If line is the last in a message, then pass on the full multiline message.
-    if (line.match(/^\d\d\d /)) {
+    if (line.match(/^\d\d\d /) && (pendingLines.length == 1 ||
+                                   pendingLines[0].startsWith(line.substring(0,3)))) {
       onMessage(pendingLines.join("\r\n"));
       // Get ready for the next message.
       pendingLines = [];
     }
-  }
+  };
 };
 
-// __tor.controPort__.
-// Beginnings of the main control port factory.
-tor.controlPort = function (host, port) {
-  var messageHandlers = [],
-      onMessage = function (message) {
-        console.log(message);
-        for each (let [regex, handleMessage] in messageHandlers) {
-          if (message.match(regex)) {
-            handleMessage(message);
-          }
-        }
-      },
-      registerMessageHandler = function (regex, handleMessage) {
-        messageHandlers.push([regex, handleMessage]);
-      },
-      onData = io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage)),
-      socket = io.asyncSocket(host, port, onData),
-      write = function (text) { socket.write(text + "\r\n"); };
-  write("authenticate");
-  //write("setevents circ stream");
-  return { close : socket.close , write : write ,
-           registerMessageHandler : registerMessageHandler};
-};
+var debug = true;
 
+// __tor.controlSocket(host, port, notificationCallback)__.
+// Instantiates a tor control socket at host:port. Asynchronous "650" notifications
+// strings will be sent to the notificationCallback(text) function. Returns a socket object
+// with methods socket.close() and socket.sendCommand(command, replyCallback);
+tor.controlSocket = function (host, port, notificationCallback) {
+  var [onMessage, dispatcher] = io.callbackDispatcher();
+      socket = io.asyncSocket(host, port,
+                              io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),    
+      writeLine = function (text) { socket.write(text + "\r\n"); },
+      [sendCommand, onReply] = io.interleaveCommandsAndReplies(writeLine);
+  dispatcher.addCallback(/^[245]\d\d/, onReply); 
+  dispatcher.addCallback(/^650/, notificationCallback);
+  sendCommand("authenticate", console.log);
+  return { close : socket.close, sendCommand : sendCommand };
+};
