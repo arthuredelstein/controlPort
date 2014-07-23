@@ -1,8 +1,8 @@
 // A script for TorBrowser that provides a simple socket client for Tor's ControlPort.
 //
 // This file is written in call stack order (later functions
-// call earlier functions). The code file can be processed
-// with docco.js to provide clear documentation.
+// call earlier functions). The file can be processed
+// with docco.js to produce pretty documentation.
 
 /* jshint moz: true */
 /* jshint -W097*/
