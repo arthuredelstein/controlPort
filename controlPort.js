@@ -7,7 +7,7 @@
 /* jshint moz: true */
 /* jshint -W097*/
 /* global Components, console */
-'use strict';
+"use strict";
 
 // ### Mozilla Abbreviations
 var {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu } = Components;
@@ -130,11 +130,9 @@ io.interleaveCommandsAndReplies = function (asyncSend) {
         }
       },
       onReply = function (reply) {
-        console.log("A", commandQueue.slice());
         var [command, replyCallback] = commandQueue.shift();
-        if (replyCallback) { replyCallback(command + ":" + reply); }
+        if (replyCallback) { replyCallback(reply); }
         if (commandQueue.length > 0) {
-          console.log("B", commandQueue.slice());
           var [nextCommand, nextReplyCallback] = commandQueue[0];
           asyncSend(nextCommand);
         }
@@ -166,14 +164,12 @@ tor.onLineFromOnMessage = function (onMessage) {
   };
 };
 
-var debug = true;
-
 // __tor.controlSocket(host, port, notificationCallback)__.
 // Instantiates a tor control socket at host:port. Asynchronous "650" notifications
 // strings will be sent to the notificationCallback(text) function. Returns a socket object
-// with methods socket.close() and socket.sendCommand(command, replyCallback);
+// with methods socket.close() and socket.sendCommand(command, replyCallback).
 tor.controlSocket = function (host, port, notificationCallback) {
-  var [onMessage, dispatcher] = io.callbackDispatcher();
+  var [onMessage, dispatcher] = io.callbackDispatcher(),
       socket = io.asyncSocket(host, port,
                               io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),    
       writeLine = function (text) { socket.write(text + "\r\n"); },
@@ -181,5 +177,6 @@ tor.controlSocket = function (host, port, notificationCallback) {
   dispatcher.addCallback(/^[245]\d\d/, onReply); 
   dispatcher.addCallback(/^650/, notificationCallback);
   sendCommand("authenticate", console.log);
+  sendCommand("setevents stream circ", console.log);
   return { close : socket.close, sendCommand : sendCommand };
 };
