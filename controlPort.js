@@ -1,4 +1,5 @@
-// A script for TorBrowser that provides a simple socket client for Tor's ControlPort.
+// A script for TorBrowser that provides a simple asynchronous client for
+// Tor's ControlPort.
 //
 // This file is written in call stack order (later functions
 // call earlier functions). The file can be processed
@@ -10,11 +11,11 @@
 "use strict";
 
 // ### Mozilla Abbreviations
-var {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu } = Components;
+let {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu } = Components;
 
 // ## io
 // I/O utilities namespace
-var io = io || {};
+let io = io || {};
 
 // __io.asyncSocket(host, port, onInputData)__.
 // Creates an asynchronous, text-oriented TCP socket at host:port.
@@ -23,7 +24,7 @@ var io = io || {};
 // socket.write(text) and socket.close().
 io.asyncSocket = function (host, port, onInputData) {
   // Load two Mozilla utilities.
-  var socketTransportService = Cc["@mozilla.org/network/socket-transport-service;1"]
+  let socketTransportService = Cc["@mozilla.org/network/socket-transport-service;1"]
            .getService(Components.interfaces.nsISocketTransportService),
       ScriptableInputStream = CC("@mozilla.org/scriptableinputstream;1",
            "nsIScriptableInputStream", "init"),
@@ -71,14 +72,14 @@ io.asyncSocket = function (host, port, onInputData) {
 // expects incoming raw socket string data.
 io.onDataFromOnLine = function (onLine) {
   // A private variable that stores the last unfinished line.
-  var pendingData = "";
+  let pendingData = "";
   // Return a callback to be passed to io.asyncSocket. First, splits data into lines of 
   // text. If the incoming data is not terminated by CRLF, then the last
   // unfinished line will be stored in pendingData, to be prepended to the data in the
   // next call to onData. The already complete lines of text are then passed in sequence
   // to onLine.
   return function (data) {
-    var totalData = pendingData + data,
+    let totalData = pendingData + data,
         lines = totalData.split("\r\n"),
         n = lines.length;
     pendingData = lines[n - 1];
@@ -94,7 +95,7 @@ io.onDataFromOnLine = function (onLine) {
 // Whenever dispatcher.onString receives a string, the dispatcher will check for any
 // regex matches and pass the string on to the corresponding callback(s).
 io.callbackDispatcher = function () {
-  var callbackPairs = [],
+  let callbackPairs = [],
       removeCallback = function (aCallback) {
         callbackPairs = callbackPairs.filter(function ([regex, callback]) {
           return callback !== aCallback;
@@ -119,9 +120,10 @@ io.callbackDispatcher = function () {
 // __io.interleaveCommandsAndReplies(asyncSend)__.
 // Takes asyncSend(message), an asynchronous send function, and returns two functions
 // sendCommand(command, replyCallback) and onReply(response). Ensures that asyncSend will
-// be called only after we have received a response to the previous asyncSend call through onReply.
+// be called only after we have received a response to the previous asyncSend call through
+// onReply.
 io.interleaveCommandsAndReplies = function (asyncSend) {
-  var commandQueue = [],
+  let commandQueue = [],
       sendCommand = function (command, replyCallback) {
         commandQueue.push([command, replyCallback]);
         if (commandQueue.length == 1) {
@@ -130,10 +132,10 @@ io.interleaveCommandsAndReplies = function (asyncSend) {
         }
       },
       onReply = function (reply) {
-        var [command, replyCallback] = commandQueue.shift();
+        let [command, replyCallback] = commandQueue.shift();
         if (replyCallback) { replyCallback(reply); }
         if (commandQueue.length > 0) {
-          var [nextCommand, nextReplyCallback] = commandQueue[0];
+          let [nextCommand, nextReplyCallback] = commandQueue[0];
           asyncSend(nextCommand);
         }
       };  
@@ -142,14 +144,14 @@ io.interleaveCommandsAndReplies = function (asyncSend) {
 
 // ## tor
 // Namespace for tor-specific functions
-var tor = tor || {};
+let tor = tor || {};
 
 // __tor.onLineFromOnMessage(onMessage)__.
 // Converts a callback that expects incoming control port multiline message strings to a
 // callback that expects individual lines.
 tor.onLineFromOnMessage = function (onMessage) {
   // A private variable that stores the last unfinished line.
-  var pendingLines = [];
+  let pendingLines = [];
   // Return a callback that expects individual lines.
   return function (line) {
     // Add to the list of pending lines.
@@ -169,7 +171,7 @@ tor.onLineFromOnMessage = function (onMessage) {
 // strings will be sent to the notificationCallback(text) function. Returns a socket object
 // with methods socket.close() and socket.sendCommand(command, replyCallback).
 tor.controlSocket = function (host, port, notificationCallback) {
-  var [onMessage, dispatcher] = io.callbackDispatcher(),
+  let [onMessage, dispatcher] = io.callbackDispatcher(),
       socket = io.asyncSocket(host, port,
                               io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),    
       writeLine = function (text) { socket.write(text + "\r\n"); },
