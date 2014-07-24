@@ -166,19 +166,31 @@ tor.onLineFromOnMessage = function (onMessage) {
   };
 };
 
-// __tor.controlSocket(host, port, notificationCallback)__.
-// Instantiates a tor control socket at host:port. Asynchronous "650" notifications
-// strings will be sent to the notificationCallback(text) function. Returns a socket object
-// with methods socket.close() and socket.sendCommand(command, replyCallback).
-tor.controlSocket = function (host, port, notificationCallback) {
-  let [onMessage, dispatcher] = io.callbackDispatcher(),
+// __tor.controlSocket(host, port)__.
+// Instantiates a tor control socket at host:port. Returns a socket object. Example:
+//
+//     // Open the socket
+//     var socket = tor.controlSocket("127.0.0.1", 9151);
+//     // Send command and receive "250" reply or error message
+//     socket.sendCommand(commandText, replyCallback);
+//     // Register or deregister for "650" notifications
+//     // that match regex
+//     socket.addNotificationCallback(regex, callback)
+//     socket.removeNotificationCallback(callback);
+//     // Close the socket permanently
+//     socket.close();
+tor.controlSocket = function (host, port) {
+  let [onMessage, mainDispatcher] = io.callbackDispatcher(),
       socket = io.asyncSocket(host, port,
                               io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),    
       writeLine = function (text) { socket.write(text + "\r\n"); },
-      [sendCommand, onReply] = io.interleaveCommandsAndReplies(writeLine);
-  dispatcher.addCallback(/^[245]\d\d/, onReply); 
-  dispatcher.addCallback(/^650/, notificationCallback);
+      [sendCommand, onReply] = io.interleaveCommandsAndReplies(writeLine),
+      [onNotification, notificationDispatcher] = io.callbackDispatcher();
+  mainDispatcher.addCallback(/^[245]\d\d/, onReply); 
+  mainDispatcher.addCallback(/^650/, onNotification);
   sendCommand("authenticate", console.log);
   sendCommand("setevents stream circ", console.log);
-  return { close : socket.close, sendCommand : sendCommand };
+  return { close : socket.close, sendCommand : sendCommand,
+           addNotificationCallback : notificationDispatcher.addCallback,
+           removeNotificationCallback : notificationDispatcher.removeCallback };
 };
