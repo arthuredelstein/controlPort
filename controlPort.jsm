@@ -57,7 +57,8 @@ io.asyncSocket = function (host, port, onInputData) {
                      onDataAvailable : function (request, context, stream, offset, count) {
                        onInputData(readAll());    
                      } }, null);
-  return { // Write a message to the socket.
+  return { 
+           // Write a message to the socket.
            write : function(aString) {
              outputStream.write(aString, aString.length);
            },
@@ -67,7 +68,8 @@ io.asyncSocket = function (host, port, onInputData) {
              scriptableInputStream.close();
              inputStream.close();
              outputStream.close();
-           } };
+           }
+         };
 };
            
 // __io.onDataFromOnLine(onLine)__.
@@ -172,15 +174,24 @@ tor.onLineFromOnMessage = function (onMessage) {
 // __tor.controlSocket(host, port)__.
 // The non-cached version of controlSocket(host, port), documented below.
 tor.controlSocket = function (host, port) {
+  // Produce a callback dispatcher for Tor messages.
   let [onMessage, mainDispatcher] = io.callbackDispatcher(),
+      // Open the socket and convert format to Tor messages.
       socket = io.asyncSocket(host, port,
-                              io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),    
+                              io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),
+      // Tor expects any commands to be terminated by CRLF.
       writeLine = function (text) { socket.write(text + "\r\n"); },
+      // Postpone command n+1 before we have received a reply to command n.
       [sendCommand, onReply] = io.interleaveCommandsAndReplies(writeLine),
+      // Create a secondary callback dispatcher for Tor notification messages.
       [onNotification, notificationDispatcher] = io.callbackDispatcher();
+  // Pass replies back to sendCommand callback.
   mainDispatcher.addCallback(/^[245]\d\d/, onReply); 
+  // Pass asynchronous notifications to notification dispatcher.
   mainDispatcher.addCallback(/^650/, onNotification);
+  // Log in to control port.
   sendCommand("authenticate", console.log);
+  // Activate needed events.
   sendCommand("setevents stream circ", console.log);
   return { close : socket.close, sendCommand : sendCommand,
            addNotificationCallback : notificationDispatcher.addCallback,
