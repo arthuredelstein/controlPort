@@ -208,8 +208,8 @@ tor.controlSocketCache = {};
 //     socket.close();
 let controlSocket = function (host, port) {
   let dest = host + ":" + port;
-  return tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
-         tor.__controlSocket(host, port);
+  return (tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
+          tor.__controlSocket(host, port));
 };
 
 // Export the controlSocket function for general use.
