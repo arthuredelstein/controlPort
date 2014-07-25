@@ -5,8 +5,12 @@
 // call earlier functions). The file can be processed
 // with docco.js to produce pretty documentation.
 //
-// See the final defined function, tor.controlSocket(host, port)
-// for usage of this module.
+// To import the module, use
+//
+//     let { controlSocket } = Components.utils.import("path/to/controlPort.jsm");
+//
+// See the last function defined in this file, controlSocket(host, port)
+// for usage of the controlSocket function.
 
 /* jshint moz: true */
 /* jshint -W097*/
@@ -190,9 +194,9 @@ tor.controlSocket = function (host, port) {
   // Pass asynchronous notifications to notification dispatcher.
   mainDispatcher.addCallback(/^650/, onNotification);
   // Log in to control port.
-  sendCommand("authenticate", console.log);
+  sendCommand("authenticate"); // , console.log);
   // Activate needed events.
-  sendCommand("setevents stream circ", console.log);
+  sendCommand("setevents stream circ"); // , console.log);
   return { close : socket.close, sendCommand : sendCommand,
            addNotificationCallback : notificationDispatcher.addCallback,
            removeNotificationCallback : notificationDispatcher.removeCallback };
@@ -222,8 +226,8 @@ tor.controlSocketCache = {};
 let controlSocket = function (host, port) {
   let dest = host + ":" + port;
   return (tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
-          tor.__controlSocket(host, port));
+          tor.controlSocket(host, port));
 };
 
-// Export the controlSocket function for general use.
+// Export the controlSocket function for external use.
 var EXPORTED_SYMBOLS = ["controlSocket"];
