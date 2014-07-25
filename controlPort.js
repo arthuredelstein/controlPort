@@ -4,6 +4,9 @@
 // This file is written in call stack order (later functions
 // call earlier functions). The file can be processed
 // with docco.js to produce pretty documentation.
+//
+// See the final defined function, tor.controlSocket(host, port)
+// for usage of this module.
 
 /* jshint moz: true */
 /* jshint -W097*/
@@ -166,20 +169,9 @@ tor.onLineFromOnMessage = function (onMessage) {
   };
 };
 
-// __tor.controlSocket(host, port)__.
-// Instantiates a tor control socket at host:port. Returns a socket object. Example:
-//
-//     // Open the socket
-//     var socket = tor.controlSocket("127.0.0.1", 9151);
-//     // Send command and receive "250" reply or error message
-//     socket.sendCommand(commandText, replyCallback);
-//     // Register or deregister for "650" notifications
-//     // that match regex
-//     socket.addNotificationCallback(regex, callback)
-//     socket.removeNotificationCallback(callback);
-//     // Close the socket permanently
-//     socket.close();
-tor.controlSocket = function (host, port) {
+// __tor.\_\_controlSocket(host, port)__.
+// The non-cached version of tor.controlSocket(host, port), documented below.
+tor.__controlSocket = function (host, port) {
   let [onMessage, mainDispatcher] = io.callbackDispatcher(),
       socket = io.asyncSocket(host, port,
                               io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),    
@@ -193,4 +185,29 @@ tor.controlSocket = function (host, port) {
   return { close : socket.close, sendCommand : sendCommand,
            addNotificationCallback : notificationDispatcher.addCallback,
            removeNotificationCallback : notificationDispatcher.removeCallback };
+};
+
+// __tor.controlSocketCache__.
+// A map from "host:port" to controlSocket objects. Prevents redundant instantiation
+// of control sockets.
+tor.controlSocketCache = {};
+
+// __tor.controlSocket(host, port)__.
+// Instantiates and returns a socket to a tor ControlPort at host:port if it doesn't yet
+// exist. Otherwise returns the existing socket to the given host:port. Example:
+//
+//     // Open the socket
+//     var socket = tor.controlSocket("127.0.0.1", 9151);
+//     // Send command and receive "250" reply or error message
+//     socket.sendCommand(commandText, replyCallback);
+//     // Register or deregister for "650" notifications
+//     // that match regex
+//     socket.addNotificationCallback(regex, callback)
+//     socket.removeNotificationCallback(callback);
+//     // Close the socket permanently
+//     socket.close();
+tor.controlSocket = function (host, port) {
+  let dest = host + ":" + port;
+  return tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
+         tor.__controlSocket(host, port);
 };
