@@ -197,7 +197,7 @@ tor.controlSocketCache = {};
 // exist. Otherwise returns the existing socket to the given host:port. Example:
 //
 //     // Open the socket
-//     var socket = tor.controlSocket("127.0.0.1", 9151);
+//     var socket = controlSocket("127.0.0.1", 9151);
 //     // Send command and receive "250" reply or error message
 //     socket.sendCommand(commandText, replyCallback);
 //     // Register or deregister for "650" notifications
