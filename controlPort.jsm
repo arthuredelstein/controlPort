@@ -203,6 +203,8 @@ tor.controlSocket = function (host, port) {
 // of control sockets.
 tor.controlSocketCache = {};
 
+// ## Export
+
 // __controlSocket(host, port)__.
 // Instantiates and returns a socket to a tor ControlPort at host:port if it doesn't yet
 // exist. Otherwise returns the existing socket to the given host:port. Example:
