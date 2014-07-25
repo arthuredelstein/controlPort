@@ -169,9 +169,9 @@ tor.onLineFromOnMessage = function (onMessage) {
   };
 };
 
-// __tor.\_\_controlSocket(host, port)__.
-// The non-cached version of tor.controlSocket(host, port), documented below.
-tor.__controlSocket = function (host, port) {
+// __tor.controlSocket(host, port)__.
+// The non-cached version of controlSocket(host, port), documented below.
+tor.controlSocket = function (host, port) {
   let [onMessage, mainDispatcher] = io.callbackDispatcher(),
       socket = io.asyncSocket(host, port,
                               io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),    
@@ -192,7 +192,7 @@ tor.__controlSocket = function (host, port) {
 // of control sockets.
 tor.controlSocketCache = {};
 
-// __tor.controlSocket(host, port)__.
+// __controlSocket(host, port)__.
 // Instantiates and returns a socket to a tor ControlPort at host:port if it doesn't yet
 // exist. Otherwise returns the existing socket to the given host:port. Example:
 //
@@ -206,8 +206,11 @@ tor.controlSocketCache = {};
 //     socket.removeNotificationCallback(callback);
 //     // Close the socket permanently
 //     socket.close();
-tor.controlSocket = function (host, port) {
+let controlSocket = function (host, port) {
   let dest = host + ":" + port;
   return tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
          tor.__controlSocket(host, port);
 };
+
+// Export the controlSocket function for general use.
+var EXPORTED_SYMBOLS = ["controlSocket"];
