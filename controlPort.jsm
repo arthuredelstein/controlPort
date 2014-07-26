@@ -175,7 +175,7 @@ tor.onLineFromOnMessage = function (onMessage) {
   };
 };
 
-// __tor.controlSocket(host, port)__.
+// __tor.controlSocket(host, port, password)__.
 // The non-cached version of controlSocket(host, port), documented below.
 tor.controlSocket = function (host, port) {
   // Produce a callback dispatcher for Tor messages.
@@ -194,7 +194,7 @@ tor.controlSocket = function (host, port) {
   // Pass asynchronous notifications to notification dispatcher.
   mainDispatcher.addCallback(/^650/, onNotification);
   // Log in to control port.
-  sendCommand("authenticate"); // , console.log);
+  sendCommand("authenticate " + password); // , console.log);
   // Activate needed events.
   sendCommand("setevents stream circ"); // , console.log);
   return { close : socket.close, sendCommand : sendCommand,
@@ -223,7 +223,7 @@ tor.controlSocketCache = {};
 //     socket.removeNotificationCallback(callback);
 //     // Close the socket permanently
 //     socket.close();
-let controlSocket = function (host, port) {
+let controlSocket = function (host, port, password) {
   let dest = host + ":" + port;
   return (tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
           tor.controlSocket(host, port));
