@@ -43,7 +43,7 @@ io.asyncSocketStreams = function (host, port) {
 // Run an "input stream pump" that takes an input stream and
 // asynchronously pumps incoming data to the onInputData callback.
 io.pumpInputStream = function (inputStream, onInputData, onError) {
-  // Wrap rawInputStream with a "ScriptableInputStream" so we can read incoming data.
+  // Wrap raw inputStream with a "ScriptableInputStream" so we can read incoming data.
   let ScriptableInputStream = CC("@mozilla.org/scriptableinputstream;1",
            "nsIScriptableInputStream", "init"),
       scriptableInputStream = new ScriptableInputStream(inputStream),
