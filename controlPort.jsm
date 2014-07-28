@@ -34,21 +34,21 @@ io.asyncSocketStreams = function (host, port) {
       socketTransport = socketTransportService.createTransport(null, 0, host, port, null),
       // Open asynchronous outputStream and inputStream.
       outputStream = socketTransport.openOutputStream(2, 1, 1),
-      rawInputStream = socketTransport.openInputStream(2, 1, 1)
+      inputStream = socketTransport.openInputStream(2, 1, 1)
                       .QueryInterface(Ci.nsIAsyncInputStream);
-      // Wrap rawInputStream with a "ScriptableInputStream" so we can read incoming data.
-      ScriptableInputStream = CC("@mozilla.org/scriptableinputstream;1",
-           "nsIScriptableInputStream", "init"),
-      inputStream = new ScriptableInputStream(rawInputStream),
   return [inputStream, outputStream];  
 };
 
 // __io.pumpInputStream(scriptableInputStream, onInputData, onError)__.
-// Run an "input stream pump" that takes a "scriptable input stream"
-// and asynchronously pumps incoming data to the onInputData callback.
-io.pumpInputStream(scriptableInputStream, onInputData, onError) {
-  // A private method to read all data available on the input stream.
-  let readAll = function() {
+// Run an "input stream pump" that takes an input stream and
+// asynchronously pumps incoming data to the onInputData callback.
+io.pumpInputStream(inputStream, onInputData, onError) {
+  // Wrap rawInputStream with a "ScriptableInputStream" so we can read incoming data.
+  let ScriptableInputStream = CC("@mozilla.org/scriptableinputstream;1",
+           "nsIScriptableInputStream", "init"),
+      scriptableInputStream = new ScriptableInputStream(inputStream),
+      // A private method to read all data available on the input stream.
+      readAll = function() {
         return scriptableInputStream.read(scriptableInputStream.available());
       },  
       pump = Cc["@mozilla.org/network/input-stream-pump;1"]
@@ -95,8 +95,7 @@ io.asyncSocket = function (host, port, onInputData, onError) {
            },
            // Close the socket.
            close : function () {
-             // Close all stream objects.
-             scriptableInputStream.close();
+             // Close stream objects.
              inputStream.close();
              outputStream.close();
            }
