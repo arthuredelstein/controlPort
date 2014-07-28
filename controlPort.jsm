@@ -34,9 +34,41 @@ io.asyncSocketStreams = function (host, port) {
       socketTransport = socketTransportService.createTransport(null, 0, host, port, null),
       // Open asynchronous outputStream and inputStream.
       outputStream = socketTransport.openOutputStream(2, 1, 1),
-      inputStream = socketTransport.openInputStream(2, 1, 1)
+      rawInputStream = socketTransport.openInputStream(2, 1, 1)
                       .QueryInterface(Ci.nsIAsyncInputStream);
+      // Wrap rawInputStream with a "ScriptableInputStream" so we can read incoming data.
+      ScriptableInputStream = CC("@mozilla.org/scriptableinputstream;1",
+           "nsIScriptableInputStream", "init"),
+      inputStream = new ScriptableInputStream(rawInputStream),
   return [inputStream, outputStream];  
+};
+
+// __io.pumpInputStream(scriptableInputStream, onInputData, onError)__.
+// Run an "input stream pump" that takes a "scriptable input stream"
+// and asynchronously pumps incoming data to the onInputData callback.
+io.pumpInputStream(scriptableInputStream, onInputData, onError) {
+  // A private method to read all data available on the input stream.
+  let readAll = function() {
+        return scriptableInputStream.read(scriptableInputStream.available());
+      },  
+      pump = Cc["@mozilla.org/network/input-stream-pump;1"]
+               .createInstance(Components.interfaces.nsIInputStreamPump);
+  // Start the pump.
+  pump.init(inputStream, -1, -1, 0, 0, true);
+  // Tell the pump to read all data whenever it is available, and pass the data
+  // to the onInputData callback. The first argument to asyncRead implements
+  // nsIStreamListener. 
+  pump.asyncRead({ onStartRequest: function (request, context) { },
+                   onStopRequest: function (request, context, code) { },
+                   onDataAvailable : function (request, context, stream, offset, count) {
+                     try {
+                       onInputData(readAll());
+                     } catch (error) {
+                       // readAll() or onInputData(...) has thrown an error.
+                       // Notify calling code through onError.
+                       onError(error);
+                     }
+                   } }, null);
 };
 
 // __io.asyncSocket(host, port, onInputData, onError)__.
@@ -47,34 +79,8 @@ io.asyncSocketStreams = function (host, port) {
 // whenever a write fails.
 io.asyncSocket = function (host, port, onInputData, onError) {
   let [inputStream, outputStream] = io.asyncSocketStreams(host, port),
-      // Wrap inputStream with a "ScriptableInputStream" so we can read incoming data.
-      ScriptableInputStream = CC("@mozilla.org/scriptableinputstream;1",
-           "nsIScriptableInputStream", "init"),
-      scriptableInputStream = new ScriptableInputStream(inputStream),
-      // A private method to read all data available on the socket.
-      readAll = function() {
-        return scriptableInputStream.read(scriptableInputStream.available());
-      },
-      // Create an "input stream pump" that takes an input stream and asynchronously
-      // pumps incoming data to a "stream listener."
-      pump = Cc["@mozilla.org/network/input-stream-pump;1"]
-               .createInstance(Components.interfaces.nsIInputStreamPump);
-    // Start the pump.
-    pump.init(inputStream, -1, -1, 0, 0, true);
-    // Tell the pump to read all data whenever it is available, and pass the data
-    // to the onInputData callback. The first argument to asyncRead implements
-    // nsIStreamListener. 
-    pump.asyncRead({ onStartRequest: function (request, context) { },
-                     onStopRequest: function (request, context, code) { },
-                     onDataAvailable : function (request, context, stream, offset, count) {
-                       try {
-                         onInputData(readAll());
-                       } catch (error) {
-                         // readAll() or onInputData(...) has thrown an error.
-                         // Notify calling code through onError.
-                         onError(error);
-                       }
-                     } }, null);
+  // Run an input stream pump to send incoming data to the onInputData callback.
+  io.pumpInputStream(inputStream, onInputData, onError);
   return { 
            // Write a message to the socket.
            write : function(aString) {
