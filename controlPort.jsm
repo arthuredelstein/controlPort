@@ -78,7 +78,7 @@ io.pumpInputStream = function (inputStream, onInputData, onError) {
 // socket.write(text) and socket.close(). onError will be passed the error object
 // whenever a write fails.
 io.asyncSocket = function (host, port, onInputData, onError) {
-  let [inputStream, outputStream] = io.asyncSocketStreams(host, port),
+  let [inputStream, outputStream] = io.asyncSocketStreams(host, port);
   // Run an input stream pump to send incoming data to the onInputData callback.
   io.pumpInputStream(inputStream, onInputData, onError);
   return { 
@@ -203,7 +203,7 @@ tor.onLineFromOnMessage = function (onMessage) {
 
 // __tor.controlSocket(host, port, password, onError)__.
 // The non-cached version of controlSocket(host, port), documented below.
-tor.controlSocket = function (host, port, onError) {
+tor.controlSocket = function (host, port, password, onError) {
   // Produce a callback dispatcher for Tor messages.
   let [onMessage, mainDispatcher] = io.callbackDispatcher(),
       // Open the socket and convert format to Tor messages.
