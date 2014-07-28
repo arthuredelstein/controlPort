@@ -13,7 +13,7 @@
 // for usage of the controlSocket function.
 
 /* jshint moz: true */
-/* jshint -W097*/
+/* jshint -W097 */
 /* global Components, console */
 "use strict";
 
@@ -250,7 +250,7 @@ tor.controlSocketCache = {};
 //     socket.sendCommand(commandText, replyCallback);
 //     // Register or deregister for "650" notifications
 //     // that match regex
-//     socket.addNotificationCallback(regex, callback)
+//     socket.addNotificationCallback(regex, callback);
 //     socket.removeNotificationCallback(callback);
 //     // Close the socket permanently
 //     socket.close();
