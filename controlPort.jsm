@@ -24,24 +24,32 @@ let {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu } = Co
 // I/O utilities namespace
 let io = io || {};
 
-// __io.asyncSocket(host, port, onInputData)__.
-// Creates an asynchronous, text-oriented TCP socket at host:port.
-// The onInputData callback should accept a single argument, which will be called
-// repeatedly, whenever incoming text arrives. Returns a socket object with two methods:
-// socket.write(text) and socket.close().
-io.asyncSocket = function (host, port, onInputData) {
-  // Load two Mozilla utilities.
+// __io.asyncSocketStreams(host, port)__.
+// Creates a pair of asynchronous input and output streams for a socket at the
+// given host and port.
+io.asyncSocketStreams = function (host, port) {
   let socketTransportService = Cc["@mozilla.org/network/socket-transport-service;1"]
            .getService(Components.interfaces.nsISocketTransportService),
-      ScriptableInputStream = CC("@mozilla.org/scriptableinputstream;1",
-           "nsIScriptableInputStream", "init"),
-       // Create an instance of a socket transport    
+       // Create an instance of a socket transport.
       socketTransport = socketTransportService.createTransport(null, 0, host, port, null),
       // Open asynchronous outputStream and inputStream.
       outputStream = socketTransport.openOutputStream(2, 1, 1),
       inputStream = socketTransport.openInputStream(2, 1, 1)
-                      .QueryInterface(Ci.nsIAsyncInputStream),
+                      .QueryInterface(Ci.nsIAsyncInputStream);
+  return [inputStream, outputStream];  
+};
+
+// __io.asyncSocket(host, port, onInputData, onError)__.
+// Creates an asynchronous, text-oriented TCP socket at host:port.
+// The onInputData callback should accept a single argument, which will be called
+// repeatedly, whenever incoming text arrives. Returns a socket object with two methods:
+// socket.write(text) and socket.close(). onError will be passed the error object
+// whenever a write fails.
+io.asyncSocket = function (host, port, onInputData, onError) {
+  let [inputStream, outputStream] = io.asyncSocketStreams(host, port),
       // Wrap inputStream with a "ScriptableInputStream" so we can read incoming data.
+      ScriptableInputStream = CC("@mozilla.org/scriptableinputstream;1",
+           "nsIScriptableInputStream", "init"),
       scriptableInputStream = new ScriptableInputStream(inputStream),
       // A private method to read all data available on the socket.
       readAll = function() {
@@ -59,12 +67,25 @@ io.asyncSocket = function (host, port, onInputData) {
     pump.asyncRead({ onStartRequest: function (request, context) { },
                      onStopRequest: function (request, context, code) { },
                      onDataAvailable : function (request, context, stream, offset, count) {
-                       onInputData(readAll());    
+                       try {
+                         onInputData(readAll());
+                       } catch (error) {
+                         // readAll() or onInputData(...) has thrown an error.
+                         // Notify calling code through onError.
+                         onError(error);
+                       }
                      } }, null);
   return { 
            // Write a message to the socket.
            write : function(aString) {
-             outputStream.write(aString, aString.length);
+             try {
+               outputStream.write(aString, aString.length);
+             } catch (err) {
+               // This write() method is not necessarily called by a callback,
+               // but we pass any thrown errors to onError to ensure the socket
+               // error handling uses a consistent single path.
+               onError(err);
+             }
            },
            // Close the socket.
            close : function () {
@@ -175,14 +196,15 @@ tor.onLineFromOnMessage = function (onMessage) {
   };
 };
 
-// __tor.controlSocket(host, port, password)__.
+// __tor.controlSocket(host, port, password, onError)__.
 // The non-cached version of controlSocket(host, port), documented below.
-tor.controlSocket = function (host, port) {
+tor.controlSocket = function (host, port, onError) {
   // Produce a callback dispatcher for Tor messages.
   let [onMessage, mainDispatcher] = io.callbackDispatcher(),
       // Open the socket and convert format to Tor messages.
       socket = io.asyncSocket(host, port,
-                              io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage))),
+                              io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage)),
+                              onError),
       // Tor expects any commands to be terminated by CRLF.
       writeLine = function (text) { socket.write(text + "\r\n"); },
       // Postpone command n+1 before we have received a reply to command n.
@@ -209,12 +231,16 @@ tor.controlSocketCache = {};
 
 // ## Export
 
-// __controlSocket(host, port)__.
-// Instantiates and returns a socket to a tor ControlPort at host:port if it doesn't yet
-// exist. Otherwise returns the existing socket to the given host:port. Example:
+// __controlSocket(host, port, password, onError)__.
+// Instantiates and returns a socket to a tor ControlPort at host:port,
+// authenticating with the given password, if the socket doesn't yet
+// exist. Otherwise returns the existing socket to the given host:port.
+// onError is called with an error object as its single argument whenever
+// an error occurs. Example:
 //
 //     // Open the socket
-//     var socket = controlSocket("127.0.0.1", 9151);
+//     var socket = controlSocket("127.0.0.1", 9151, "MyPassw0rd",
+//                    function (error) { console.log(error.message || error); });
 //     // Send command and receive "250" reply or error message
 //     socket.sendCommand(commandText, replyCallback);
 //     // Register or deregister for "650" notifications
@@ -223,10 +249,10 @@ tor.controlSocketCache = {};
 //     socket.removeNotificationCallback(callback);
 //     // Close the socket permanently
 //     socket.close();
-let controlSocket = function (host, port, password) {
+let controlSocket = function (host, port, password, onError) {
   let dest = host + ":" + port;
   return (tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
-          tor.controlSocket(host, port));
+          tor.controlSocket(host, port, password, onError));
 };
 
 // Export the controlSocket function for external use.
