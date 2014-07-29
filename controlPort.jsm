@@ -305,13 +305,21 @@ tor.parseValueString = function ([key, valueString]) {
   return [key, tor.valueStringParsers[key](valueString)];
 };
 
-// __tor.getInfo__.
-// Requests a 
-tor.getInfo = function (socket, keys, onValue) {
+// __tor.getInfoMultiple__.
+// Requests info for an array of keys.
+tor.getInfoMultiple = function (socket, keys, onValue) {
   socket.sendCommand("getinfo " + keys.join(" "), function (message) {
     onValue(tor.pairsToMap(tor.infoKVStringsFromMessage(message)
                             .map(tor.stringToKV)
                             .map(tor.parseValueString)));
+  });
+};
+
+// __tor.getInfo__.
+// Requests info for a single key.
+tor.getInfo = function (socket, key, onValue) {
+  tor.getInfoMultiple(socket, [key], function (valueMap) {
+    onValue(valueMap[key]);
   });
 };
 
