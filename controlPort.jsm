@@ -119,7 +119,7 @@ io.onDataFromOnLine = function (onLine) {
         n = lines.length;
     pendingData = lines[n - 1];
     // Call onLine for all completed lines.
-    lines.slice(0,-1).forEach(onLine);
+    lines.slice(0,-1).map(onLine);
   };
 };
 
@@ -234,6 +234,95 @@ tor.controlSocket = function (host, port, password, onError) {
 // of control sockets.
 tor.controlSocketCache = {};
 
+// __tor.capture(string, regex)__.
+// Takes a string and returns an array of capture items, where regex must have a single
+// capturing group and use the suffix /.../g to specify a global search.
+tor.capture = function (string, regex) {
+  var matches = [];
+  // Special trick to use string.replace for capturing multiple matches.
+  string.replace(regex, function (a, captured) {
+    matches.push(captured);
+  });
+  return matches;
+};
+
+// __tor.extractor(regex)__.
+// Returns a function that takes a string and returns an array of regex matches. The
+// regex must use the suffix /.../g to specify a global search.
+tor.extractor = function (regex) {
+  return function (text) {
+    return tor.capture(text, regex);
+  };
+};
+
+// __tor.infoKVStringsFromMessage(messageText)__.
+// Takes a message (text) response to GETINFO and provides a series of key-value (KV)
+// strings. KV strings are either multiline (with a "250+" prefix):
+//
+//     250+config/defaults=
+//     AccountingMax "0 bytes"
+//     AllowDotExit "0"
+//     .
+//
+// or single-line (with a "250-" prefix):
+//
+//     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
+tor.infoKVStringsFromMessage = tor.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
+
+// __tor.stringToKV(kvString)__.
+// Converts a key-value (KV) string to a key, value pair as from GETINFO. 
+tor.stringToKV = function (kvString) {
+  let key = kvString.match(/^250[\+-](.+?)=/mi)[1],
+      matchResult = kvString.match(/250\-.+?=(.*?)$/mi) ||
+                    kvString.match(/250\+.+?=([\s\S]*?)^\.$/mi),
+      value = matchResult ? matchResult[1] : null;
+  return [key, value];
+};
+
+// __tor.pairsToMap(pairs)__.
+// Convert a series of pairs [[a1, b1], [a2, b2], ...] to a map {a1 : b1, a2 : b2 ...}.
+tor.pairsToMap = function (pairs) {
+  let result = {};
+  pairs.map(function ([a, b]) {
+    result[a] = b;
+  });
+  return result;
+};
+
+let identity = function (x) { return x; };
+
+tor.valueStringParsers = {
+  "version" : identity,
+  "config-file" : identity,
+  "config-defaults-file" : identity,
+  "config-text" : identity,
+  "exit-policy/default" : identity
+};
+
+// __tor.parseValueString([key, valueString])__
+// Takes a [key, valueString] pair and converts it to useful data, appropriate to the key.
+tor.parseValueString = function ([key, valueString]) {
+  return [key, tor.valueStringParsers[key](valueString)];
+};
+
+// __tor.getInfo__.
+// Requests a 
+tor.getInfo = function (socket, keys, onValue) {
+  socket.sendCommand("getinfo " + keys.join(" "), function (message) {
+    onValue(tor.pairsToMap(tor.infoKVStringsFromMessage(message)
+                            .map(tor.stringToKV)
+                            .map(tor.parseValueString)));
+  });
+};
+
+/*
+tor.controller = function (host, port, password, onError) {
+  let socket = controlSocket(host, port, password, onError)
+  return { getInfo : function (info) { tor.getInfo(socket, info); };
+           addEvent : 
+};
+*/
+
 // ## Export
 
 // __controlSocket(host, port, password, onError)__.
@@ -259,6 +348,8 @@ let controlSocket = function (host, port, password, onError) {
   return (tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
           tor.controlSocket(host, port, password, onError));
 };
+
+
 
 // Export the controlSocket function for external use.
 var EXPORTED_SYMBOLS = ["controlSocket"];
