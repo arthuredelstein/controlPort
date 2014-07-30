@@ -238,7 +238,7 @@ tor.controlSocketCache = {};
 // Takes a string and returns an array of capture items, where regex must have a single
 // capturing group and use the suffix /.../g to specify a global search.
 tor.capture = function (string, regex) {
-  var matches = [];
+  let matches = [];
   // Special trick to use string.replace for capturing multiple matches.
   string.replace(regex, function (a, captured) {
     matches.push(captured);
@@ -296,7 +296,55 @@ tor.valueStringParsers = {
   "config-file" : identity,
   "config-defaults-file" : identity,
   "config-text" : identity,
-  "exit-policy/default" : identity
+  "exit-policy/default" : identity,
+  "exit-policy/ipv4" : identity,
+  "exit-policy/ipv6" : identity,
+  "exit-policy/full" : identity,
+  "desc/id/" : identity,
+  "desc/name/" : identity,
+  "md/id/" : identity,
+  "md/name/" : identity,
+  "dormant" : identity,
+  "desc-annotations/id/" : identity,
+  "extra-info/digest/" : identity,
+  "ns/id/" : identity,
+  "ns/name/" : identity,
+  "ns/all/" : identity,
+  "ns/purpose/" : identity,
+  "desc/all-recent" : identity,
+  "network-status" : identity,
+  "address-mappings/" : identity,
+  "address-mappings/" : identity,
+  "address" : identity,
+  "fingerprint" : identity,
+  "circuit-status" : identity,
+  "stream-status" : identity,
+  "orconn-status" : identity,
+  "entry-guards" : identity,
+  "traffic/read" : identity,
+  "traffic/written" : identity,
+  "accounting/enabled" : identity,
+  "accounting/hibernating" : identity,
+  "accounting/bytes" : identity,
+  "accounting/bytes-left" : identity,
+  "accounting/interval-start" : identity,
+  "accounting/interval-wake" : identity,
+  "accounting/interval-end" : identity,
+  "config/names" : identity,
+  "config/defaults" : identity,
+  "info/names" : identity,
+  "events/names" : identity,
+  "features/names" : identity,
+  "signal/names" : identity,
+  "ip-to-country/" : identity,
+  "next-circuit/" : identity,
+  "process/" : identity,
+  "process/descriptor-limit" : identity,
+  "dir/status-vote/current/consensus" : identity,
+  "dir/status/" : identity,
+  "dir/server/" : identity,
+  "net/listeners/" : 
+  
 };
 
 // __tor.parseValueString([key, valueString])__
@@ -306,19 +354,19 @@ tor.parseValueString = function ([key, valueString]) {
 };
 
 // __tor.getInfoMultiple__.
-// Requests info for an array of keys.
-tor.getInfoMultiple = function (socket, keys, onValue) {
-  socket.sendCommand("getinfo " + keys.join(" "), function (message) {
-    onValue(tor.pairsToMap(tor.infoKVStringsFromMessage(message)
+// Requests info for an array of keys. Passes onMap a map of keys to values.
+tor.getInfoMultiple = function (controlSocket, keys, onMap) {
+  controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
+    onMap(tor.pairsToMap(tor.infoKVStringsFromMessage(message)
                             .map(tor.stringToKV)
                             .map(tor.parseValueString)));
   });
 };
 
 // __tor.getInfo__.
-// Requests info for a single key.
-tor.getInfo = function (socket, key, onValue) {
-  tor.getInfoMultiple(socket, [key], function (valueMap) {
+// Requests info for a single key. Passes onValue the value for that key.
+tor.getInfo = function (controlSocket, key, onValue) {
+  tor.getInfoMultiple(controlSocket, [key], function (valueMap) {
     onValue(valueMap[key]);
   });
 };
@@ -341,7 +389,7 @@ tor.controller = function (host, port, password, onError) {
 // an error occurs. Example:
 //
 //     // Open the socket
-//     var socket = controlSocket("127.0.0.1", 9151, "MyPassw0rd",
+//     let socket = controlSocket("127.0.0.1", 9151, "MyPassw0rd",
 //                    function (error) { console.log(error.message || error); });
 //     // Send command and receive "250" reply or error message
 //     socket.sendCommand(commandText, replyCallback);
