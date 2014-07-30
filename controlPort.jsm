@@ -343,8 +343,8 @@ tor.valueStringParsers = {
   "dir/status-vote/current/consensus" : identity,
   "dir/status/" : identity,
   "dir/server/" : identity,
-  "net/listeners/" : 
-  
+  "net/listeners/" : identity
+  "dir-usage" : identity
 };
 
 // __tor.parseValueString([key, valueString])__
