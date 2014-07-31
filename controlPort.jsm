@@ -313,10 +313,10 @@ info.stringToKV = function (kvString) {
 // Provides a function that parses the string response to a GETINFO request
 // and converts it to JavaScript data.
 info.valueStringParsers = {
-  "version" : identity,
-  "config-file" : identity,
-  "config-defaults-file" : identity,
-  "config-text" : identity,
+  "version" : utils.identity,
+  "config-file" : utils.identity,
+  "config-defaults-file" : utils.identity,
+  "config-text" : utils.identity,
   "exit-policy/" : "not supported",
   "desc/id/" : "not supported",
   "desc/name/" : "not supported",
@@ -333,16 +333,16 @@ info.valueStringParsers = {
   "network-status" : "not supported",
   "address-mappings/" : "not supported",
   "addr-mappings/" : "deprecated",
-  "address" : identity,
-  "fingerprint" : identity,
+  "address" : utils.identity,
+  "fingerprint" : utils.identity,
   "circuit-status" : "not supported",
   "stream-status" : "not supported",
   "orconn-status" : "not supported",
   "entry-guards" : "not supported",
-  "traffic/read" : asInt,
-  "traffic/written" : asInt,
+  "traffic/read" : utils.asInt,
+  "traffic/written" : utils.asInt,
   "accounting/enabled" : function (x) { return x === "1"; },
-  "accounting/hibernating" : identity,
+  "accounting/hibernating" : utils.identity,
   "accounting/bytes" : "not supported",
   "accounting/bytes-left" : "not supported",
   "accounting/interval-start" : "not supported",
@@ -354,10 +354,10 @@ info.valueStringParsers = {
   "events/names" : "not supported",
   "features/names" : "not supported",
   "signal/names" : "not supported",
-  "ip-to-country/" : identity,
-  "next-circuit/" : identity,
-  "process/" : identity,
-  "process/descriptor-limit" : asInt,
+  "ip-to-country/" : utils.identity,
+  "next-circuit/" : utils.identity,
+  "process/" : utils.identity,
+  "process/descriptor-limit" : utils.asInt,
   "dir/status-vote/current/consensus" : "not supported",
   "dir/status/" : "not supported",
   "dir/server/" : "not supported",
@@ -391,7 +391,7 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
     }
   }
   controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
-    onMap(utils.pairsToMap(into.kvStringsFromMessage(message)
+    onMap(utils.pairsToMap(info.kvStringsFromMessage(message)
                                .map(info.stringToKV)
                                .map(info.parseValueString)));
   });
@@ -407,6 +407,7 @@ info.getInfo = function (controlSocket, key, onValue) {
 
 // ## tor
 // Things related to the main controller.
+let tor = tor || {};
 
 // __tor.controller(host, port, password, onError)__.
 // Creates a tor controller at the given host and port, with the given password.
