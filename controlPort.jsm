@@ -268,7 +268,8 @@ utils.extractor = function (regex) {
 // Returns its argument.
 utils.identity = function (x) { return x; };
 
-// __utils.asInt(x)__. Returns a decimal number in a string into a number.
+// __utils.asInt(x)__.
+// Returns a decimal number in a string into a number.
 utils.asInt = function (x) { return parseInt(x, 10); };
 
 // __utils.pairsToMap(pairs)__.
@@ -279,6 +280,12 @@ utils.pairsToMap = function (pairs) {
     result[a] = b;
   });
   return result;
+};
+
+// __utils.isString(x)__.
+// Returns true iff x is a string.
+utils.isString = function (x) {
+  return typeof(x) === 'string' || x instanceof String;
 };
 
 // ## info
@@ -386,7 +393,7 @@ info.parseValueString = function ([key, valueString]) {
 info.getInfoMultiple = function (controlSocket, keys, onMap) {
   for (let i in keys) {
     let parser = utils.getValueStringParser(keys[i]);
-    if (parser instanceof String) {
+    if (utils.isString(parser)) {
       throw new Error(keys[i] + ": " + parser + ".");
     }
   }
