@@ -243,6 +243,10 @@ io.controlSocket = function (host, port, password, onError) {
 // A namespace for utility functions
 let utils = utils || {};
 
+// __utils.identity(x)__.
+// Returns its argument unchanged.
+utils.identity = function (x) { return x; };
+
 // __utils.isString(x)__.
 // Returns true iff x is a string.
 utils.isString = function (x) {
@@ -269,6 +273,10 @@ utils.extractor = function (regex) {
     return utils.capture(text, regex);
   };
 };
+
+// __utils.splitLines(string)__.
+// Splits a string into an array of strings, each corresponding to a line.
+utils.splitLines = utils.extractor(/^(.*?)$/g);
 
 // __utils.splitAtSpaces(string)__.
 // Splits a string into chunks between spaces. Does not split at spaces
@@ -335,6 +343,38 @@ let info = info || {};
 //     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
 info.keyValueStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
 
+info.ns_id_parser = function (valueString) {
+/*
+  let lines = utils.splitLines(valueString);
+  for (let i in lines) {
+    if (lines.startsWith("r")) {
+      utils.splitAtSpaces
+    }
+  }
+  */
+};
+
+// __info.parsers__.
+// Provides a function that parses the string response to a GETINFO request
+// and converts it to JavaScript data.
+info.parsers = {
+  "version" : utils.identity,
+  "config-file" : utils.identity,
+  "config-defaults-file" : utils.identity,
+  "config-text" : utils.identity,
+  "ns/id/" : "not supported",
+  "ip-to-country/" : utils.identity,
+};
+
+// __info.getParser(key)__.
+// Takes a key a determines the parser function that should be used to
+// convert its corresponding valueString to JavaScript data.
+info.getParser = function(key) {
+  return info.parsers[key] ||
+         info.parsers[key.substring(0, key.lastIndexOf("/") + 1)] ||
+         "unknown";         
+};
+
 // __info.stringToKeyValuePair(string)__.
 // Converts a key-value string to a key, value pair as from GETINFO. 
 info.stringToKeyValuePair = function (string) {
@@ -342,7 +382,7 @@ info.stringToKeyValuePair = function (string) {
       matchResult = string.match(/250\-.+?=(.*?)$/mi) ||
                     string.match(/250\+.+?=([\s\S]*?)^\.$/mi),
       valueString = matchResult ? matchResult[1] : null;
-  return [key, utils.listMapData(valueString)];
+  return [key, info.getParser(key)(valueString)];
 };
 
 // __info.getInfoMultiple(controlSocket, keys, onMap)__.
@@ -353,6 +393,13 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
   }
   if (!(onMap instanceof Function)) {
     throw new Error("onMap argument should be a function");
+  }
+  let parsers = keys.map(getParser);
+  if (parsers.indexOf("unknown") !== -1) {
+    throw new Error("unknown key");
+  }
+  if (parsers.indexOf("not supported") !== -1) {
+    throw new Error("unsupported key");
   }
   controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
     onMap(utils.pairsToMap(info.keyValueStringsFromMessage(message)
