@@ -363,7 +363,7 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
 // __info.getInfo(controlSocket, key, onValue)__.
 // Requests info for a single key. Passes onValue the value for that key.
 info.getInfo = function (controlSocket, key, onValue) {
-  if (!(utils.isString(key)) {
+  if (!utils.isString(key)) {
     throw new Error("key argument should be a string");
   }
   if (!(onValue instanceof Function)) {
@@ -442,3 +442,16 @@ let controller = function (host, port, password, onError) {
 
 // Export the controller function for external use.
 var EXPORTED_SYMBOLS = ["controller"];
+
+// __nodeData(id, onResult)__.
+// Requests the IP, country code, and name of a node with given ID.
+// Returns result in onResult.
+// Example: nodeData("20BC91DC525C3DC9974B29FBEAB51230DE024C44", show);
+var nodeData = function (id, onResult) {
+  c.getInfo("ns/id/" + id, function (data) {
+    let name = data[1], ip = data[6];
+    c.getInfo("ip-to-country/" + ip, function (data) {
+      onResult({ name : name, id : id , ip : ip , country : data[0] });
+    });
+  });
+};
