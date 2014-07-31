@@ -419,6 +419,9 @@ tor.getInfo = function (controlSocket, key, onValue) {
 tor.controller = function (host, port, password, onError) {
   let socket = tor.controlSocket(host, port, password, onError);
   return { getInfo : function (key, log) { tor.getInfo(socket, key, log); } ,
+           getInfoMultiple : function (keys, log) {
+             tor.getInfoMultiple(socket, keys, log);
+           },
            close : socket.close };
 };
 
