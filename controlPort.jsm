@@ -283,19 +283,18 @@ utils.splitAtEquals = utils.extractor(/(([^=]*?"(.*?)")+[^=]*|[^=]+)/g);
 //     utils.listMapData("40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH",
 //                       ["streamID", "event", "circuitID", "IP"])
 //     // --> {"streamID" : "40", "event" : "FAILED", "circuitID" : "0",
-//     //      "IP" : "95.78.59.36:80", "REASON" : "CANT_ATTACH"}"
+//     //      "address" : "95.78.59.36:80", "REASON" : "CANT_ATTACH"}"
 utils.listMapData = function (parameterString, listNames) {
   let parameters = utils.splitAtSpaces(parameterString),
+      parameterNames = listNames.slice();
       dataMap = {};
-  // Assign each "list" parameter a name.
-  for (let i in listNames) {
-    dataMap[listNames[i]] = parameters[i]; 
-  };
   // Find any key-value parameters and add them as well.
-  for (let i = listNames.length; i < parameters.length; ++i) {
+  for (let i = 0; i < parameters.length; ++i) {
     [key, value] = utils.splitAtEquals(parameters[i]);
     if (key && value) {
       dataMap[key] = value;
+    } else {
+      dataMap[parameterNames.shift()] = parameters[i];
     }
   }
   return dataMap;
