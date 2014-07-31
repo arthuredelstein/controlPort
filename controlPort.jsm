@@ -1,5 +1,5 @@
-// A script for TorBrowser that provides a simple asynchronous client for
-// Tor's ControlPort.
+// A script for TorBrowser that provides an asynchronous controller for
+// Tor, through its ControlPort.
 //
 // This file is written in call stack order (later functions
 // call earlier functions). The file can be processed
@@ -407,7 +407,7 @@ tor.getInfo = function (controlSocket, key, onValue) {
 // Creates a tor controller at the given host and port, with the given password.
 // onError returns asynchronously whenever a connection error occurs.
 tor.controller = function (host, port, password, onError) {
-  let socket = controlSocket(host, port, password, onError);
+  let socket = tor.controlSocket(host, port, password, onError);
   return { getInfo : function (key, log) { tor.getInfo(socket, key, log); } ,
            close : socket.close };
 };
