@@ -276,7 +276,7 @@ utils.extractor = function (regex) {
 
 // __utils.splitLines(string)__.
 // Splits a string into an array of strings, each corresponding to a line.
-utils.splitLines = utils.extractor(/^(.*?)$/g);
+utils.splitLines = function (string) { return string.split(/\r?\n/); }
 
 // __utils.splitAtSpaces(string)__.
 // Splits a string into chunks between spaces. Does not split at spaces
@@ -298,31 +298,46 @@ utils.pairsToMap = function (pairs) {
   return result;
 };
 
-// __utils.listMapData(parameterString)__.
+// __utils.mergeObjects(arrayOfObjects)__.
+// Takes an array of objects like [{"a":"b"},{"c":"d"}] and merges to a single object.
+// Pure function.
+utils.mergeObjects = function (arrayOfObjects) {
+  let result = {};
+  for (let i in arrayOfObjects) {
+    let obj = arrayOfObjects[i];
+    for (var key in obj) {
+      result[key] = obj[key];
+    }
+  }    
+  return result;
+};
+
+// __utils.listMapData(parameterString, listNames)__.
 // Takes a list of parameters separated by spaces, of which the first several are
-// unnamed, and the remainder are named, in the form `NAME=VALUE`. Produces a vector
-// with the unnamed parameters, ending with a map containing named parameters.
-// Example:
+// unnamed, and the remainder are named, in the form `NAME=VALUE`. Apply listNames
+// to the unnamed parameters, and combine them in a map with the named parameters.
+// Example: `40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH`
 //
-//     utils.listMapData("40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH");
-//     // --> [ "40", "FAILED", "0", "95.78.59.36:80", {"REASON" : "CANT_ATTACH"} ]
-utils.listMapData = function (parameterString) {
+//     utils.listMapData("40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH",
+//                       ["streamID", "event", "circuitID", "IP"])
+//     // --> {"streamID" : "40", "event" : "FAILED", "circuitID" : "0",
+//     //      "address" : "95.78.59.36:80", "REASON" : "CANT_ATTACH"}"
+utils.listMapData = function (parameterString, listNames) {
   let parameters = utils.splitAtSpaces(parameterString),
-      dataMap = {},
-      result = [];
-  // Unnamed parameters go into list; named parameters go into map.
+      parameterNames = listNames.slice(),
+      dataMap = {};
+  // Find any key-value parameters and them. Also assign names to non-key parameters.
   for (let i = 0; i < parameters.length; ++i) {
     let [key, value] = utils.splitAtEquals(parameters[i]);
     if (key && value) {
       dataMap[key] = value;
     } else {
-      result.push(parameters[i]);
-    }
-    if (Object.keys(dataMap).length > 0) {
-      result.push(dataMap);
+      if (parameterNames.length > 0) {
+        dataMap[parameterNames.shift()] = parameters[i];
+      }
     }
   }
-  return result;
+  return dataMap;
 };
 
 // ## info
@@ -343,15 +358,24 @@ let info = info || {};
 //     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
 info.keyValueStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
 
-info.ns_id_parser = function (valueString) {
-/*
-  let lines = utils.splitLines(valueString);
+// __routerStatusParser(valueString)__.
+// see "router status entry" at
+// https://gitweb.torproject.org/torspec.git/blob/HEAD:/dir-spec.txt
+info.routerStatusParser = function (valueString) {
+  let lines = utils.splitLines(valueString),
+      objects = [];
   for (let i in lines) {
-    if (lines.startsWith("r")) {
-      utils.splitAtSpaces
-    }
+    let data = lines[i].substring(2);
+    objects.push(
+    { "r" : utils.listMapData(data, ["nickname", "identity", "digest", "publicationDate",    
+                                     "publicationTime", "IP", "ORPort", "DirPort"]) ,
+      "a" : { "IPv6" :  data } ,
+      "s" : { "statusFlags" : utils.splitAtSpaces(data) } ,
+      "v" : { "version" : data } ,
+      "w" : utils.listMapData(data, []) }[lines[i].charAt(0)]
+     );                                   
   }
-  */
+  return utils.mergeObjects(objects);
 };
 
 // __info.parsers__.
