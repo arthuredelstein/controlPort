@@ -388,6 +388,16 @@ tor.parseValueString = function ([key, valueString]) {
 // __tor.getInfoMultiple__.
 // Requests info for an array of keys. Passes onMap a map of keys to values.
 tor.getInfoMultiple = function (controlSocket, keys, onMap) {
+  parsers = keys.map(tor.getValueStringParser);
+  if (parsers.indexOf(notSupported) != -1) {
+    throw new Error("Unsupported key.");
+  }
+  if (parsers.indexOf(deprecated) != -1) {
+    throw new Error("Deprecated key.");
+  }
+  if (parsers.indexOf(unknown) != -1) {
+    throw new Error("Unknown key.");
+  }
   controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
     onMap(tor.pairsToMap(tor.infoKVStringsFromMessage(message)
                             .map(tor.stringToKV)
