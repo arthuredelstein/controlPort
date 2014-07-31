@@ -7,10 +7,10 @@
 //
 // To import the module, use
 //
-//     let { controlSocket } = Components.utils.import("path/to/controlPort.jsm");
+//     let { controller } = Components.utils.import("path/to/controlPort.jsm");
 //
-// See the last function defined in this file, controlSocket(host, port)
-// for usage of the controlSocket function.
+// See the last function defined in this file, controller(host, port, password, onError)
+// for usage of the controller function.
 
 /* jshint moz: true */
 /* jshint -W097 */
@@ -177,14 +177,10 @@ io.interleaveCommandsAndReplies = function (asyncSend) {
   return [sendCommand, onReply];
 };
 
-// ## tor
-// Namespace for tor-specific functions
-let tor = tor || {};
-
-// __tor.onLineFromOnMessage(onMessage)__.
+// __io.onLineFromOnMessage(onMessage)__.
 // Converts a callback that expects incoming control port multiline message strings to a
 // callback that expects individual lines.
-tor.onLineFromOnMessage = function (onMessage) {
+io.onLineFromOnMessage = function (onMessage) {
   // A private variable that stores the last unfinished line.
   let pendingLines = [];
   // Return a callback that expects individual lines.
@@ -201,14 +197,28 @@ tor.onLineFromOnMessage = function (onMessage) {
   };
 };
 
-// __tor.controlSocket(host, port, password, onError)__.
-// The non-cached version of controlSocket(host, port), documented below.
-tor.controlSocket = function (host, port, password, onError) {
+// __io.controlSocket(host, port, password, onError)__.
+// Instantiates and returns a socket to a tor ControlPort at host:port,
+// authenticating with the given password. onError is called with an
+// error object as its single argument whenever an error occurs. Example:
+//
+//     // Open the socket
+//     let socket = controlSocket("127.0.0.1", 9151, "MyPassw0rd",
+//                    function (error) { console.log(error.message || error); });
+//     // Send command and receive "250" reply or error message
+//     socket.sendCommand(commandText, replyCallback);
+//     // Register or deregister for "650" notifications
+//     // that match regex
+//     socket.addNotificationCallback(regex, callback);
+//     socket.removeNotificationCallback(callback);
+//     // Close the socket permanently
+//     socket.close();
+io.controlSocket = function (host, port, password, onError) {
   // Produce a callback dispatcher for Tor messages.
   let [onMessage, mainDispatcher] = io.callbackDispatcher(),
       // Open the socket and convert format to Tor messages.
       socket = io.asyncSocket(host, port,
-                              io.onDataFromOnLine(tor.onLineFromOnMessage(onMessage)),
+                              io.onDataFromOnLine(io.onLineFromOnMessage(onMessage)),
                               onError),
       // Tor expects any commands to be terminated by CRLF.
       writeLine = function (text) { socket.write(text + "\r\n"); },
@@ -229,15 +239,14 @@ tor.controlSocket = function (host, port, password, onError) {
            removeNotificationCallback : notificationDispatcher.removeCallback };
 };
 
-// __tor.controlSocketCache__.
-// A map from "host:port" to controlSocket objects. Prevents redundant instantiation
-// of control sockets.
-tor.controlSocketCache = {};
+// ## utils
+// A namespace for utility functions
+let utils = utils || {};
 
-// __tor.capture(string, regex)__.
+// __utils.capture(string, regex)__.
 // Takes a string and returns an array of capture items, where regex must have a single
 // capturing group and use the suffix /.../g to specify a global search.
-tor.capture = function (string, regex) {
+utils.capture = function (string, regex) {
   let matches = [];
   // Special trick to use string.replace for capturing multiple matches.
   string.replace(regex, function (a, captured) {
@@ -246,42 +255,25 @@ tor.capture = function (string, regex) {
   return matches;
 };
 
-// __tor.extractor(regex)__.
+// __utils.extractor(regex)__.
 // Returns a function that takes a string and returns an array of regex matches. The
 // regex must use the suffix /.../g to specify a global search.
-tor.extractor = function (regex) {
+utils.extractor = function (regex) {
   return function (text) {
-    return tor.capture(text, regex);
+    return utils.capture(text, regex);
   };
 };
 
-// __tor.infoKVStringsFromMessage(messageText)__.
-// Takes a message (text) response to GETINFO and provides a series of key-value (KV)
-// strings. KV strings are either multiline (with a "250+" prefix):
-//
-//     250+config/defaults=
-//     AccountingMax "0 bytes"
-//     AllowDotExit "0"
-//     .
-//
-// or single-line (with a "250-" prefix):
-//
-//     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
-tor.infoKVStringsFromMessage = tor.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
+// __utils.identity(x)__.
+// Returns its argument.
+utils.identity = function (x) { return x; };
 
-// __tor.stringToKV(kvString)__.
-// Converts a key-value (KV) string to a key, value pair as from GETINFO. 
-tor.stringToKV = function (kvString) {
-  let key = kvString.match(/^250[\+-](.+?)=/mi)[1],
-      matchResult = kvString.match(/250\-.+?=(.*?)$/mi) ||
-                    kvString.match(/250\+.+?=([\s\S]*?)^\.$/mi),
-      value = matchResult ? matchResult[1] : null;
-  return [key, value];
-};
+// __utils.asInt(x)__. Returns a decimal number in a string into a number.
+utils.asInt = function (x) { return parseInt(x, 10); };
 
-// __tor.pairsToMap(pairs)__.
+// __utils.pairsToMap(pairs)__.
 // Convert a series of pairs [[a1, b1], [a2, b2], ...] to a map {a1 : b1, a2 : b2 ...}.
-tor.pairsToMap = function (pairs) {
+utils.pairsToMap = function (pairs) {
   let result = {};
   pairs.map(function ([a, b]) {
     result[a] = b;
@@ -289,167 +281,171 @@ tor.pairsToMap = function (pairs) {
   return result;
 };
 
-// __identity__.
-// Returns its argument.
-let identity = function (x) { return x; };
+// ## info
+// A namespace for functions related to tor's GETINFO command.
+let info = info || {};
 
-// __returnError__.
-// Returns a function that, when applied to any argument, returns an error with the
-// given message text.
-let returnError = function (message) { return function (x) {
-    throw new Error(x + ": " + message + ".");
-  };
+// __info.kvStringsFromMessage(messageText)__.
+// Takes a message (text) response to GETINFO and provides a series of key-value (KV)
+// strings. KV strings are either multiline (with a `250+` prefix):
+//
+//     250+config/defaults=
+//     AccountingMax "0 bytes"
+//     AllowDotExit "0"
+//     .
+//
+// or single-line (with a `250-` prefix):
+//
+//     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
+info.kvStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
+
+// __info.stringToKV(kvString)__.
+// Converts a key-value (KV) string to a key, value pair as from GETINFO. 
+info.stringToKV = function (kvString) {
+  let key = kvString.match(/^250[\+-](.+?)=/mi)[1],
+      matchResult = kvString.match(/250\-.+?=(.*?)$/mi) ||
+                    kvString.match(/250\+.+?=([\s\S]*?)^\.$/mi),
+      value = matchResult ? matchResult[1] : null;
+  return [key, value];
 };
 
-// __notSupported(x)__. Returns a "not supported" error when applied to any value.
-let notSupported = returnError("not supported");
-
-// __deprecated(x)__. Returns a "deprecated" error when applied to any value.
-let deprecated = returnError("deprecated");
-
-// __unknown(x)__. Returns an "unknown" error when applied to any value.
-let unknown = returnError("unknown");
-
-// __asInt(x)__. Returns a decimal number in a string into a number.
-let asInt = function (x) { return parseInt(x, 10); };
-
-// __tor.valueStringParsers__.
-// Provides a function that converts the string response to a GETINFO request
-// into JavaScript data.
-tor.valueStringParsers = {
+// __info.valueStringParsers__.
+// Provides a function that parses the string response to a GETINFO request
+// and converts it to JavaScript data.
+info.valueStringParsers = {
   "version" : identity,
   "config-file" : identity,
   "config-defaults-file" : identity,
   "config-text" : identity,
-  "exit-policy/" : notSupported,
-  "desc/id/" : notSupported,
-  "desc/name/" : notSupported,
-  "md/id/" : notSupported,
-  "md/name/" : notSupported,
-  "dormant" : notSupported,
-  "desc-annotations/id/" : notSupported,
-  "extra-info/digest/" : notSupported,
-  "ns/id/" : notSupported,
-  "ns/name/" : notSupported,
-  "ns/all/" : notSupported,
-  "ns/purpose/" : notSupported,
-  "desc/all-recent" : notSupported,
-  "network-status" : notSupported,
-  "address-mappings/" : notSupported,
-  "addr-mappings/" : deprecated,
+  "exit-policy/" : "not supported",
+  "desc/id/" : "not supported",
+  "desc/name/" : "not supported",
+  "md/id/" : "not supported",
+  "md/name/" : "not supported",
+  "dormant" : "not supported",
+  "desc-annotations/id/" : "not supported",
+  "extra-info/digest/" : "not supported",
+  "ns/id/" : "not supported",
+  "ns/name/" : "not supported",
+  "ns/all/" : "not supported",
+  "ns/purpose/" : "not supported",
+  "desc/all-recent" : "not supported",
+  "network-status" : "not supported",
+  "address-mappings/" : "not supported",
+  "addr-mappings/" : "deprecated",
   "address" : identity,
   "fingerprint" : identity,
-  "circuit-status" : notSupported,
-  "stream-status" : notSupported,
-  "orconn-status" : notSupported,
-  "entry-guards" : notSupported,
+  "circuit-status" : "not supported",
+  "stream-status" : "not supported",
+  "orconn-status" : "not supported",
+  "entry-guards" : "not supported",
   "traffic/read" : asInt,
   "traffic/written" : asInt,
   "accounting/enabled" : function (x) { return x === "1"; },
   "accounting/hibernating" : identity,
-  "accounting/bytes" : notSupported,
-  "accounting/bytes-left" : notSupported,
-  "accounting/interval-start" : notSupported,
-  "accounting/interval-wake" : notSupported,
-  "accounting/interval-end" : notSupported,
-  "config/names" : notSupported,
-  "config/defaults" : notSupported,
-  "info/names" : notSupported,
-  "events/names" : notSupported,
-  "features/names" : notSupported,
-  "signal/names" : notSupported,
+  "accounting/bytes" : "not supported",
+  "accounting/bytes-left" : "not supported",
+  "accounting/interval-start" : "not supported",
+  "accounting/interval-wake" : "not supported",
+  "accounting/interval-end" : "not supported",
+  "config/names" : "not supported",
+  "config/defaults" : "not supported",
+  "info/names" : "not supported",
+  "events/names" : "not supported",
+  "features/names" : "not supported",
+  "signal/names" : "not supported",
   "ip-to-country/" : identity,
   "next-circuit/" : identity,
   "process/" : identity,
   "process/descriptor-limit" : asInt,
-  "dir/status-vote/current/consensus" : notSupported,
-  "dir/status/" : notSupported,
-  "dir/server/" : notSupported,
-  "status/" : notSupported,
-  "net/listeners/" : notSupported,
-  "dir-usage" : notSupported
+  "dir/status-vote/current/consensus" : "not supported",
+  "dir/status/" : "not supported",
+  "dir/server/" : "not supported",
+  "status/" : "not supported",
+  "net/listeners/" : "not supported",
+  "dir-usage" : "not supported"
 };
 
-// __tor.getValueStringParser(key)__.
+// __info.getValueStringParser(key)__.
 // Takes a key a determines the parser function that should be used to
 // convert its corresponding valueString to JavaScript data.
-tor.getValueStringParser = function(key) {
-  return tor.valueStringParsers[key] ||
-         tor.valueStringParsers[key.substring(0, key.lastIndexOf("/") + 1)] ||
-         unknown;         
+info.getValueStringParser = function(key) {
+  return info.valueStringParsers[key] ||
+         info.valueStringParsers[key.substring(0, key.lastIndexOf("/") + 1)] ||
+         "unknown";         
 };
 
-// __tor.parseValueString([key, valueString])__
+// __info.parseValueString([key, valueString])__
 // Takes a [key, valueString] pair and converts it to useful data, appropriate to the key.
-tor.parseValueString = function ([key, valueString]) {
-  return [key, tor.getValueStringParser(key)(valueString)];
+info.parseValueString = function ([key, valueString]) {
+  return [key, info.getValueStringParser(key)(valueString)];
 };
 
-// __tor.getInfoMultiple__.
+// __info.getInfoMultiple(controlSocket, keys, onMap)__.
 // Requests info for an array of keys. Passes onMap a map of keys to values.
-tor.getInfoMultiple = function (controlSocket, keys, onMap) {
-  parsers = keys.map(tor.getValueStringParser);
-  if (parsers.indexOf(notSupported) != -1) {
-    throw new Error("Unsupported key.");
-  }
-  if (parsers.indexOf(deprecated) != -1) {
-    throw new Error("Deprecated key.");
-  }
-  if (parsers.indexOf(unknown) != -1) {
-    throw new Error("Unknown key.");
+info.getInfoMultiple = function (controlSocket, keys, onMap) {
+  for (let i in keys) {
+    let parser = utils.getValueStringParser(keys[i]);
+    if (parser instanceof String) {
+      throw new Error(keys[i] + ": " + parser + ".");
+    }
   }
   controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
-    onMap(tor.pairsToMap(tor.infoKVStringsFromMessage(message)
-                            .map(tor.stringToKV)
-                            .map(tor.parseValueString)));
+    onMap(utils.pairsToMap(into.kvStringsFromMessage(message)
+                               .map(info.stringToKV)
+                               .map(info.parseValueString)));
   });
 };
 
-// __tor.getInfo__.
+// __info.getInfo(controlSocket, key, onValue)__.
 // Requests info for a single key. Passes onValue the value for that key.
-tor.getInfo = function (controlSocket, key, onValue) {
-  tor.getInfoMultiple(controlSocket, [key], function (valueMap) {
+info.getInfo = function (controlSocket, key, onValue) {
+  info.getInfoMultiple(controlSocket, [key], function (valueMap) {
     onValue(valueMap[key]);
   });
 };
 
-// __tor.controller__.
+// ## tor
+// Things related to the main controller.
+
+// __tor.controller(host, port, password, onError)__.
 // Creates a tor controller at the given host and port, with the given password.
 // onError returns asynchronously whenever a connection error occurs.
 tor.controller = function (host, port, password, onError) {
-  let socket = tor.controlSocket(host, port, password, onError);
-  return { getInfo : function (key, log) { tor.getInfo(socket, key, log); } ,
+  let socket = io.controlSocket(host, port, password, onError);
+  return { getInfo : function (key, log) { info.getInfo(socket, key, log); } ,
            getInfoMultiple : function (keys, log) {
-             tor.getInfoMultiple(socket, keys, log);
+             info.getInfoMultiple(socket, keys, log);
            },
            close : socket.close };
 };
 
+// __tor.controllerCache__.
+// A map from "host:port" to controller objects. Prevents redundant instantiation
+// of control sockets.
+tor.controllerCache__ = {};
+
 // ## Export
 
-// __controlSocket(host, port, password, onError)__.
-// Instantiates and returns a socket to a tor ControlPort at host:port,
-// authenticating with the given password, if the socket doesn't yet
-// exist. Otherwise returns the existing socket to the given host:port.
+// __controller(host, port, password, onError)__.
+// Instantiates and returns a controller object connected to a tor ControlPort
+// at host:port, authenticating with the given password, if the controller doesn't yet
+// exist. Otherwise returns the existing controller to the given host:port.
 // onError is called with an error object as its single argument whenever
 // an error occurs. Example:
 //
-//     // Open the socket
-//     let socket = controlSocket("127.0.0.1", 9151, "MyPassw0rd",
+//     // Get the controller
+//     let c = controller("127.0.0.1", 9151, "MyPassw0rd",
 //                    function (error) { console.log(error.message || error); });
-//     // Send command and receive "250" reply or error message
-//     socket.sendCommand(commandText, replyCallback);
-//     // Register or deregister for "650" notifications
-//     // that match regex
-//     socket.addNotificationCallback(regex, callback);
-//     socket.removeNotificationCallback(callback);
-//     // Close the socket permanently
-//     socket.close();
-let controlSocket = function (host, port, password, onError) {
+//     // Send command and receive `250` reply or error message
+//     c.getInfo("ip-to-country/16.16.16.16", console.log);
+//     // Close the controller permanently
+//     c.close();
+let controller = function (host, port, password, onError) {
   let dest = host + ":" + port;
-  return (tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
-          tor.controlSocket(host, port, password, onError));
+  return (tor.controller[dest] = tor.controller[dest] ||
+          tor.controller(host, port, password, onError));
 };
 
-// Export the controlSocket function for external use.
-var EXPORTED_SYMBOLS = ["controlSocket"];
+// Export the controller function for external use.
+var EXPORTED_SYMBOLS = ["controller"];
