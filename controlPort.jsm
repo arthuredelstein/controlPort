@@ -274,41 +274,32 @@ utils.splitAtSpaces = utils.extractor(/((\S*?"(.*?)")+\S*|\S+)/g);
 // inside pairs of quotation marks.
 utils.splitAtEquals = utils.extractor(/(([^=]*?"(.*?)")+[^=]*|[^=]+)/g);
 
-// __utils.listMapData(parameterString, listNames)__.
+// __utils.listMapData(parameterString)__.
 // Takes a list of parameters separated by spaces, of which the first several are
-// unnamed, and the remainder are named, in the form `NAME=VALUE`. Apply listNames
-// to the unnamed parameters, and combine them in a map with the named parameters.
-// Example: `40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH`
+// unnamed, and the remainder are named, in the form `NAME=VALUE`. Produces a vector
+// with the unnamed parameters, ending with a map containing named parameters.
+// Example:
 //
-//     utils.listMapData("40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH",
-//                       ["streamID", "event", "circuitID", "IP"])
-//     // --> {"streamID" : "40", "event" : "FAILED", "circuitID" : "0",
-//     //      "address" : "95.78.59.36:80", "REASON" : "CANT_ATTACH"}"
-utils.listMapData = function (parameterString, listNames) {
+//     utils.listMapData("40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH");
+//     // --> [ "40", "FAILED", "0", "95.78.59.36:80", {"REASON" : "CANT_ATTACH"} ]
+utils.listMapData = function (parameterString) {
   let parameters = utils.splitAtSpaces(parameterString),
-      parameterNames = listNames.slice();
-      dataMap = {};
-  // Find any key-value parameters and them. Also assign names to non-key parameters.
+      dataMap = {},
+      result = [];
+  // Unnamed parameters go into list; named parameters go into map.
   for (let i = 0; i < parameters.length; ++i) {
     let [key, value] = utils.splitAtEquals(parameters[i]);
     if (key && value) {
       dataMap[key] = value;
     } else {
-      if (parameterNames.length > 0) {
-        dataMap[parameterNames.shift()] = parameters[i];
-      }
+      result.push(parameters[i]);
+    }
+    if (Object.keys(dataMap).length > 0) {
+      result.push(dataMap);
     }
   }
-  return dataMap;
+  return result;
 };
-
-// __utils.identity(x)__.
-// Returns its argument.
-utils.identity = function (x) { return x; };
-
-// __utils.asInt(x)__.
-// Returns a decimal number in a string into a number.
-utils.asInt = function (x) { return parseInt(x, 10); };
 
 // __utils.pairsToMap(pairs)__.
 // Convert a series of pairs [[a1, b1], [a2, b2], ...] to a map {a1 : b1, a2 : b2 ...}.
@@ -344,86 +335,16 @@ let info = info || {};
 //     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
 info.kvStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
 
-// __info.stringToKV(kvString)__.
-// Converts a key-value (KV) string to a key, value pair as from GETINFO. 
-info.stringToKV = function (kvString) {
+info.
+
+// __info.stringToKeyValuePair(string)__.
+// Converts a key-value string to a key, value pair as from GETINFO. 
+info.stringToKeyValuePair = function (kvString) {
   let key = kvString.match(/^250[\+-](.+?)=/mi)[1],
       matchResult = kvString.match(/250\-.+?=(.*?)$/mi) ||
                     kvString.match(/250\+.+?=([\s\S]*?)^\.$/mi),
       value = matchResult ? matchResult[1] : null;
   return [key, value];
-};
-
-// __info.valueStringParsers__.
-// Provides a function that parses the string response to a GETINFO request
-// and converts it to JavaScript data.
-info.valueStringParsers = {
-  "version" : utils.identity,
-  "config-file" : utils.identity,
-  "config-defaults-file" : utils.identity,
-  "config-text" : utils.identity,
-  "exit-policy/" : "not supported",
-  "desc/id/" : "not supported",
-  "desc/name/" : "not supported",
-  "md/id/" : "not supported",
-  "md/name/" : "not supported",
-  "dormant" : "not supported",
-  "desc-annotations/id/" : "not supported",
-  "extra-info/digest/" : "not supported",
-  "ns/id/" : "not supported",
-  "ns/name/" : "not supported",
-  "ns/all/" : "not supported",
-  "ns/purpose/" : "not supported",
-  "desc/all-recent" : "not supported",
-  "network-status" : "not supported",
-  "address-mappings/" : "not supported",
-  "addr-mappings/" : "deprecated",
-  "address" : utils.identity,
-  "fingerprint" : utils.identity,
-  "circuit-status" : "not supported",
-  "stream-status" : "not supported",
-  "orconn-status" : "not supported",
-  "entry-guards" : "not supported",
-  "traffic/read" : utils.asInt,
-  "traffic/written" : utils.asInt,
-  "accounting/enabled" : function (x) { return x === "1"; },
-  "accounting/hibernating" : utils.identity,
-  "accounting/bytes" : "not supported",
-  "accounting/bytes-left" : "not supported",
-  "accounting/interval-start" : "not supported",
-  "accounting/interval-wake" : "not supported",
-  "accounting/interval-end" : "not supported",
-  "config/names" : "not supported",
-  "config/defaults" : "not supported",
-  "info/names" : "not supported",
-  "events/names" : "not supported",
-  "features/names" : "not supported",
-  "signal/names" : "not supported",
-  "ip-to-country/" : utils.identity,
-  "next-circuit/" : utils.identity,
-  "process/" : utils.identity,
-  "process/descriptor-limit" : utils.asInt,
-  "dir/status-vote/current/consensus" : "not supported",
-  "dir/status/" : "not supported",
-  "dir/server/" : "not supported",
-  "status/" : "not supported",
-  "net/listeners/" : "not supported",
-  "dir-usage" : "not supported"
-};
-
-// __info.getValueStringParser(key)__.
-// Takes a key a determines the parser function that should be used to
-// convert its corresponding valueString to JavaScript data.
-info.getValueStringParser = function(key) {
-  return info.valueStringParsers[key] ||
-         info.valueStringParsers[key.substring(0, key.lastIndexOf("/") + 1)] ||
-         "unknown";         
-};
-
-// __info.parseValueString([key, valueString])__
-// Takes a [key, valueString] pair and converts it to useful data, appropriate to the key.
-info.parseValueString = function ([key, valueString]) {
-  return [key, info.getValueStringParser(key)(valueString)];
 };
 
 // __info.getInfoMultiple(controlSocket, keys, onMap)__.
@@ -437,8 +358,7 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
   }
   controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
     onMap(utils.pairsToMap(info.kvStringsFromMessage(message)
-                               .map(info.stringToKV)
-                               .map(info.parseValueString)));
+                               .map(info.stringToKeyValuePair)));
   });
 };
 
@@ -454,40 +374,6 @@ info.getInfo = function (controlSocket, key, onValue) {
 // Handlers for events
 
 let event = event || {};
-
-event.parameterNames = {
-  "CIRC" : ["CircuitID", "CircStatus", "Path"], // 4.1.1
-  "STREAM" : ["StreamID", "StreamStatus", "CircuitID", "Target"], // 4.1.2
-  "ORCONN" : "not supported", // 4.1.3
-  "BW" : "not supported", // 4.1.4
-  "DEBUG" : ["LogMessage"], // 4.1.5
-  "INFO" : ["LogMessage"], // 4.1.5
-  "NOTICE" : ["LogMessage"], // 4.1.5
-  "WARN" : ["LogMessage"], // 4.1.5
-  "ERR" : ["LogMessage"], // 4.1.5
-  "NEWDESC" : "not supported", // 4.1.6
-  "ADDRMAP" : "not supported", // 4.1.7
-  "AUTHDIR_NEWDESCS" : "not supported",  // 4.1.8
-  "DESCCHANGED" : "not supported", // 4.1.9
-  "STATUS_GENERAL" : "not supported", // 4.1.10
-  "STATUS_CLIENT" : "not supported", // 4.1.10
-  "STATUS_SERVER" : "not supported", // 4.1.10
-  "GUARD" : "not supported", // 4.1.11
-  "NS : "not supported", // 4.1.12
-  "STREAM_BW" : "not supported", // 4.1.13
-  "CLIENTS_SEEN" : "not supported", // 4.1.14
-  "NEWCONSENSUS" : "not supported", // 4.1.15
-  "BUILDTIMEOUT_SET" : "not supported", // 4.1.16
-  "SIGNAL" : "not supported", // 4.1.17
-  "CONF_CHANGED" : "not supported", // 4.1.18
-  "CIRC_MINOR" : "not supported", // 4.1.19
-  "TRANSPORT_LAUNCHED" : "not supported", // 4.1.20
-  "CONN_BW" : "not supported", // 4.1.21
-  "CIRC_BW" : "not supported", // 4.1.22
-  "CELL_STATS" : "not supported", // 4.1.23
-  "TB_EMPTY" : "not supported", // 4.1.24
-  "HS_DESC" : "not supported" // 4.1.25
-}
 
 // __event.messageToData(message)__.
 // Extract the data from an event.
