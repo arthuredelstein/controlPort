@@ -123,6 +123,26 @@ io.onDataFromOnLine = function (onLine) {
   };
 };
 
+// __io.onLineFromOnMessage(onMessage)__.
+// Converts a callback that expects incoming control port multiline message strings to a
+// callback that expects individual lines.
+io.onLineFromOnMessage = function (onMessage) {
+  // A private variable that stores the last unfinished line.
+  let pendingLines = [];
+  // Return a callback that expects individual lines.
+  return function (line) {
+    // Add to the list of pending lines.
+    pendingLines.push(line);
+    // If line is the last in a message, then pass on the full multiline message.
+    if (line.match(/^\d\d\d /) && (pendingLines.length == 1 ||
+                                   pendingLines[0].startsWith(line.substring(0,3)))) {
+      onMessage(pendingLines.join("\r\n"));
+      // Get ready for the next message.
+      pendingLines = [];
+    }
+  };
+};
+
 // __io.callbackDispatcher()__.
 // Returns [onString, dispatcher] where the latter is an object with two member functions:
 // dispatcher.addCallback(regex, callback), and dispatcher.removeCallback(callback).
@@ -165,31 +185,11 @@ io.matchRepliesToCommands = function (asyncSend) {
       onReply = function (reply) {
         let [command, replyCallback] = commandQueue.shift();
         if (replyCallback) { replyCallback(reply); }
-      };
+      },
       onFailure = function () {
         commandQueue.shift();
       };
   return [sendCommand, onReply, onFailure];
-};
-
-// __io.onLineFromOnMessage(onMessage)__.
-// Converts a callback that expects incoming control port multiline message strings to a
-// callback that expects individual lines.
-io.onLineFromOnMessage = function (onMessage) {
-  // A private variable that stores the last unfinished line.
-  let pendingLines = [];
-  // Return a callback that expects individual lines.
-  return function (line) {
-    // Add to the list of pending lines.
-    pendingLines.push(line);
-    // If line is the last in a message, then pass on the full multiline message.
-    if (line.match(/^\d\d\d /) && (pendingLines.length == 1 ||
-                                   pendingLines[0].startsWith(line.substring(0,3)))) {
-      onMessage(pendingLines.join("\r\n"));
-      // Get ready for the next message.
-      pendingLines = [];
-    }
-  };
 };
 
 // __io.controlSocket(host, port, password, onError)__.
@@ -340,8 +340,14 @@ info.stringToKeyValuePair = function (string) {
 };
 
 // __info.getInfoMultiple(controlSocket, keys, onMap)__.
-// Requests info for an array of keys. Passes onMap a map of keys to values.
+// Requests info for an array of keys. Passes a map of keys to values to onMap function.
 info.getInfoMultiple = function (controlSocket, keys, onMap) {
+  if (!(keys instanceof Array)) {
+    throw new Error("keys argument should be an array");
+  }
+  if (!(onMap instanceof Function)) {
+    throw new Error("onMap argument should be a function");
+  }
   controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
     onMap(utils.pairsToMap(info.keyValueStringsFromMessage(message)
                                .map(info.stringToKeyValuePair)));
@@ -351,6 +357,12 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
 // __info.getInfo(controlSocket, key, onValue)__.
 // Requests info for a single key. Passes onValue the value for that key.
 info.getInfo = function (controlSocket, key, onValue) {
+  if (!(keys instanceof string)) {
+    throw new Error("key argument should be a string");
+  }
+  if (!(onValue instanceof Function)) {
+    throw new Error("onValue argument should be a function");
+  }
   info.getInfoMultiple(controlSocket, [key], function (valueMap) {
     onValue(valueMap[key]);
   });
@@ -364,7 +376,6 @@ let event = event || {};
 // __event.messageToData(message)__.
 // Extract the data from an event.
 event.parameterString = function (message) {
-  
   return message.match(/^650 \S+?\s(.*?)$/mi)[1];
 };
 
@@ -377,7 +388,7 @@ event.watchEvent = function (controlSocket, type, filter, onData) {
     if (filter(data)) {
       onData(data);
     }
-  };
+  });
 };
 
 // ## tor
