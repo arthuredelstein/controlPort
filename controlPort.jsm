@@ -288,13 +288,15 @@ utils.listMapData = function (parameterString, listNames) {
   let parameters = utils.splitAtSpaces(parameterString),
       parameterNames = listNames.slice();
       dataMap = {};
-  // Find any key-value parameters and add them as well.
+  // Find any key-value parameters and them. Also assign names to non-key parameters.
   for (let i = 0; i < parameters.length; ++i) {
-    [key, value] = utils.splitAtEquals(parameters[i]);
+    let [key, value] = utils.splitAtEquals(parameters[i]);
     if (key && value) {
       dataMap[key] = value;
     } else {
-      dataMap[parameterNames.shift()] = parameters[i];
+      if (parameterNames.length > 0) {
+        dataMap[parameterNames.shift()] = parameters[i];
+      }
     }
   }
   return dataMap;
