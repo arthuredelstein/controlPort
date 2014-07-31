@@ -284,12 +284,6 @@ utils.pairsToMap = function (pairs) {
   return result;
 };
 
-// __utils.isString(x)__.
-// Returns true iff x is a string.
-utils.isString = function (x) {
-  return typeof(x) === 'string' || x instanceof String;
-};
-
 // __utils.listMapData(parameterString)__.
 // Takes a list of parameters separated by spaces, of which the first several are
 // unnamed, and the remainder are named, in the form `NAME=VALUE`. Produces a vector
