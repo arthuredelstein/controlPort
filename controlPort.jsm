@@ -152,29 +152,24 @@ io.callbackDispatcher = function () {
   return [onString, {addCallback : addCallback, removeCallback : removeCallback}];
 };
 
-// __io.interleaveCommandsAndReplies(asyncSend)__.
+// __io.matchRepliesToCommands(asyncSend)__.
 // Takes asyncSend(message), an asynchronous send function, and returns two functions
-// sendCommand(command, replyCallback) and onReply(response). Ensures that asyncSend will
-// be called only after we have received a response to the previous asyncSend call through
-// onReply.
-io.interleaveCommandsAndReplies = function (asyncSend) {
+// sendCommand(command, replyCallback) and onReply(response). If we call sendCommand,
+// then when onReply is called, the corresponding replyCallback will be called.
+io.matchRepliesToCommands = function (asyncSend) {
   let commandQueue = [],
       sendCommand = function (command, replyCallback) {
         commandQueue.push([command, replyCallback]);
-        if (commandQueue.length == 1) {
-          // No pending replies; send command immediately.
-          asyncSend(command);
-        }
+        asyncSend(command);
       },
       onReply = function (reply) {
         let [command, replyCallback] = commandQueue.shift();
         if (replyCallback) { replyCallback(reply); }
-        if (commandQueue.length > 0) {
-          let [nextCommand, nextReplyCallback] = commandQueue[0];
-          asyncSend(nextCommand);
-        }
-      };  
-  return [sendCommand, onReply];
+      };
+      onFailure = function () {
+        commandQueue.shift();
+      };
+  return [sendCommand, onReply, onFailure];
 };
 
 // __io.onLineFromOnMessage(onMessage)__.
@@ -222,12 +217,17 @@ io.controlSocket = function (host, port, password, onError) {
                               onError),
       // Tor expects any commands to be terminated by CRLF.
       writeLine = function (text) { socket.write(text + "\r\n"); },
-      // Postpone command n+1 before we have received a reply to command n.
-      [sendCommand, onReply] = io.interleaveCommandsAndReplies(writeLine),
+      // Ensure we return the correct reply for each sendCommand.
+      [sendCommand, onReply, onFailure] = io.matchRepliesToCommands(writeLine),
       // Create a secondary callback dispatcher for Tor notification messages.
       [onNotification, notificationDispatcher] = io.callbackDispatcher();
-  // Pass replies back to sendCommand callback.
-  mainDispatcher.addCallback(/^[245]\d\d/, onReply); 
+  // Pass successful reply back to sendCommand callback.
+  mainDispatcher.addCallback(/^2\d\d/, onReply); 
+  // Pass error message to sendCommand callback.
+  mainDispatcher.addCallback(/^[45]\d\d/, function (message) {
+    onFailure();
+    onError(new Error(message));
+  });
   // Pass asynchronous notifications to notification dispatcher.
   mainDispatcher.addCallback(/^650/, onNotification);
   // Log in to control port.
@@ -274,6 +274,22 @@ utils.splitAtSpaces = utils.extractor(/((\S*?"(.*?)")+\S*|\S+)/g);
 // inside pairs of quotation marks.
 utils.splitAtEquals = utils.extractor(/(([^=]*?"(.*?)")+[^=]*|[^=]+)/g);
 
+// __utils.pairsToMap(pairs)__.
+// Convert a series of pairs [[a1, b1], [a2, b2], ...] to a map {a1 : b1, a2 : b2 ...}.
+utils.pairsToMap = function (pairs) {
+  let result = {};
+  pairs.map(function ([a, b]) {
+    result[a] = b;
+  });
+  return result;
+};
+
+// __utils.isString(x)__.
+// Returns true iff x is a string.
+utils.isString = function (x) {
+  return typeof(x) === 'string' || x instanceof String;
+};
+
 // __utils.listMapData(parameterString)__.
 // Takes a list of parameters separated by spaces, of which the first several are
 // unnamed, and the remainder are named, in the form `NAME=VALUE`. Produces a vector
@@ -301,29 +317,13 @@ utils.listMapData = function (parameterString) {
   return result;
 };
 
-// __utils.pairsToMap(pairs)__.
-// Convert a series of pairs [[a1, b1], [a2, b2], ...] to a map {a1 : b1, a2 : b2 ...}.
-utils.pairsToMap = function (pairs) {
-  let result = {};
-  pairs.map(function ([a, b]) {
-    result[a] = b;
-  });
-  return result;
-};
-
-// __utils.isString(x)__.
-// Returns true iff x is a string.
-utils.isString = function (x) {
-  return typeof(x) === 'string' || x instanceof String;
-};
-
 // ## info
 // A namespace for functions related to tor's GETINFO command.
 let info = info || {};
 
-// __info.kvStringsFromMessage(messageText)__.
-// Takes a message (text) response to GETINFO and provides a series of key-value (KV)
-// strings. KV strings are either multiline (with a `250+` prefix):
+// __info.keyValueStringsFromMessage(messageText)__.
+// Takes a message (text) response to GETINFO and provides a series of key-value
+// strings, which are either multiline (with a `250+` prefix):
 //
 //     250+config/defaults=
 //     AccountingMax "0 bytes"
@@ -333,31 +333,23 @@ let info = info || {};
 // or single-line (with a `250-` prefix):
 //
 //     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
-info.kvStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
-
-info.
+info.keyValueStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
 
 // __info.stringToKeyValuePair(string)__.
 // Converts a key-value string to a key, value pair as from GETINFO. 
-info.stringToKeyValuePair = function (kvString) {
-  let key = kvString.match(/^250[\+-](.+?)=/mi)[1],
-      matchResult = kvString.match(/250\-.+?=(.*?)$/mi) ||
-                    kvString.match(/250\+.+?=([\s\S]*?)^\.$/mi),
-      value = matchResult ? matchResult[1] : null;
-  return [key, value];
+info.stringToKeyValuePair = function (string) {
+  let key = string.match(/^250[\+-](.+?)=/mi)[1],
+      matchResult = string.match(/250\-.+?=(.*?)$/mi) ||
+                    string.match(/250\+.+?=([\s\S]*?)^\.$/mi),
+      valueString = matchResult ? matchResult[1] : null;
+  return [key, utils.listMapData(valueString)];
 };
 
 // __info.getInfoMultiple(controlSocket, keys, onMap)__.
 // Requests info for an array of keys. Passes onMap a map of keys to values.
 info.getInfoMultiple = function (controlSocket, keys, onMap) {
-  for (let i in keys) {
-    let parser = utils.getValueStringParser(keys[i]);
-    if (utils.isString(parser)) {
-      throw new Error(keys[i] + ": " + parser + ".");
-    }
-  }
   controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
-    onMap(utils.pairsToMap(info.kvStringsFromMessage(message)
+    onMap(utils.pairsToMap(info.keyValueStringsFromMessage(message)
                                .map(info.stringToKeyValuePair)));
   });
 };
