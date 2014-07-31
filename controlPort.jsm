@@ -1,4 +1,4 @@
-// A script for TorBrowser that provides an asynchronous controller for
+// A module for TorBrowser that provides an asynchronous controller for
 // Tor, through its ControlPort.
 //
 // This file is written in call stack order (later functions
@@ -455,10 +455,44 @@ info.getInfo = function (controlSocket, key, onValue) {
 
 let event = event || {};
 
-// __event.parameterString(message)__.
-// Extract the parameters from an event. For example:
-// `650 STREAM A B C` --> `A B C`.
+event.parameterNames = {
+  "CIRC" : ["CircuitID", "CircStatus", "Path"], // 4.1.1
+  "STREAM" : ["StreamID", "StreamStatus", "CircuitID", "Target"], // 4.1.2
+  "ORCONN" : "not supported", // 4.1.3
+  "BW" : "not supported", // 4.1.4
+  "DEBUG" : ["LogMessage"], // 4.1.5
+  "INFO" : ["LogMessage"], // 4.1.5
+  "NOTICE" : ["LogMessage"], // 4.1.5
+  "WARN" : ["LogMessage"], // 4.1.5
+  "ERR" : ["LogMessage"], // 4.1.5
+  "NEWDESC" : "not supported", // 4.1.6
+  "ADDRMAP" : "not supported", // 4.1.7
+  "AUTHDIR_NEWDESCS" : "not supported",  // 4.1.8
+  "DESCCHANGED" : "not supported", // 4.1.9
+  "STATUS_GENERAL" : "not supported", // 4.1.10
+  "STATUS_CLIENT" : "not supported", // 4.1.10
+  "STATUS_SERVER" : "not supported", // 4.1.10
+  "GUARD" : "not supported", // 4.1.11
+  "NS : "not supported", // 4.1.12
+  "STREAM_BW" : "not supported", // 4.1.13
+  "CLIENTS_SEEN" : "not supported", // 4.1.14
+  "NEWCONSENSUS" : "not supported", // 4.1.15
+  "BUILDTIMEOUT_SET" : "not supported", // 4.1.16
+  "SIGNAL" : "not supported", // 4.1.17
+  "CONF_CHANGED" : "not supported", // 4.1.18
+  "CIRC_MINOR" : "not supported", // 4.1.19
+  "TRANSPORT_LAUNCHED" : "not supported", // 4.1.20
+  "CONN_BW" : "not supported", // 4.1.21
+  "CIRC_BW" : "not supported", // 4.1.22
+  "CELL_STATS" : "not supported", // 4.1.23
+  "TB_EMPTY" : "not supported", // 4.1.24
+  "HS_DESC" : "not supported" // 4.1.25
+}
+
+// __event.messageToData(message)__.
+// Extract the data from an event.
 event.parameterString = function (message) {
+  
   return message.match(/^650 \S+?\s(.*?)$/mi)[1];
 };
 
