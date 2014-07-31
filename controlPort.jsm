@@ -264,6 +264,43 @@ utils.extractor = function (regex) {
   };
 };
 
+// __utils.splitAtSpaces(string)__.
+// Splits a string into chunks between spaces. Does not split at spaces
+// inside pairs of quotation marks.
+utils.splitAtSpaces = utils.extractor(/((\S*?"(.*?)")+\S*|\S+)/g);
+
+// __utils.splitAtEquals(string)__.
+// Splits a string into chunks between equals. Does not split at equals
+// inside pairs of quotation marks.
+utils.splitAtEquals = utils.extractor(/(([^=]*?"(.*?)")+[^=]*|[^=]+)/g);
+
+// __utils.listMapData(parameterString, listNames)__.
+// Takes a list of parameters separated by spaces, of which the first several are
+// unnamed, and the remainder are named, in the form `NAME=VALUE`. Apply listNames
+// to the unnamed parameters, and combine them in a map with the named parameters.
+// Example: `40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH`
+//
+//     utils.listMapData("40 FAILED 0 95.78.59.36:80 REASON=CANT_ATTACH",
+//                       ["streamID", "event", "circuitID", "IP"])
+//     // --> {"streamID" : "40", "event" : "FAILED", "circuitID" : "0",
+//     //      "IP" : "95.78.59.36:80", "REASON" : "CANT_ATTACH"}"
+utils.listMapData = function (parameterString, listNames) {
+  let parameters = utils.splitAtSpaces(parameterString),
+      dataMap = {};
+  // Assign each "list" parameter a name.
+  for (let i in listNames) {
+    dataMap[listNames[i]] = parameters[i]; 
+  };
+  // Find any key-value parameters and add them as well.
+  for (let i = listNames.length; i < parameters.length; ++i) {
+    [key, value] = utils.splitAtEquals(parameters[i]);
+    if (key && value) {
+      dataMap[key] = value;
+    }
+  }
+  return dataMap;
+};
+
 // __utils.identity(x)__.
 // Returns its argument.
 utils.identity = function (x) { return x; };
@@ -410,6 +447,30 @@ info.getInfo = function (controlSocket, key, onValue) {
   info.getInfoMultiple(controlSocket, [key], function (valueMap) {
     onValue(valueMap[key]);
   });
+};
+
+// ## event
+// Handlers for events
+
+let event = event || {};
+
+// __event.parameterString(message)__.
+// Extract the parameters from an event. For example:
+// `650 STREAM A B C` --> `A B C`.
+event.parameterString = function (message) {
+  return message.match(/^650 \S+?\s(.*?)$/mi)[1];
+};
+
+// __event.watchEvent(controlSocket, type, filter, onData)__.
+// Watches for a particular type of event. If filter(data) returns true, the event's
+// data is pass to the onData callback.
+event.watchEvent = function (controlSocket, type, filter, onData) {
+  controlSocket.addNotification(new RegExp("^650 " + type), function (message) {
+    let data = event.messageToData(message);
+    if (filter(data)) {
+      onData(data);
+    }
+  };
 };
 
 // ## tor
