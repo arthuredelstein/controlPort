@@ -243,6 +243,12 @@ io.controlSocket = function (host, port, password, onError) {
 // A namespace for utility functions
 let utils = utils || {};
 
+// __utils.isString(x)__.
+// Returns true iff x is a string.
+utils.isString = function (x) {
+  return typeof(x) === 'string' || x instanceof String;
+};
+
 // __utils.capture(string, regex)__.
 // Takes a string and returns an array of capture items, where regex must have a single
 // capturing group and use the suffix /.../g to specify a global search.
@@ -357,7 +363,7 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
 // __info.getInfo(controlSocket, key, onValue)__.
 // Requests info for a single key. Passes onValue the value for that key.
 info.getInfo = function (controlSocket, key, onValue) {
-  if (!(keys instanceof string)) {
+  if (!(utils.isString(key)) {
     throw new Error("key argument should be a string");
   }
   if (!(onValue instanceof Function)) {
