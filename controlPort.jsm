@@ -289,68 +289,100 @@ tor.pairsToMap = function (pairs) {
   return result;
 };
 
+// __identity__.
+// Returns its argument.
 let identity = function (x) { return x; };
 
+// __returnError__.
+// Returns a function that, when applied to any argument, returns an error with the
+// given message text.
+let returnError = function (message) { return function (x) {
+    throw new Error(x + ": " + message + ".");
+  };
+};
+
+// __notSupported(x)__. Returns a "not supported" error when applied to any value.
+let notSupported = returnError("not supported");
+
+// __deprecated(x)__. Returns a "deprecated" error when applied to any value.
+let deprecated = returnError("deprecated");
+
+// __unknown(x)__. Returns an "unknown" error when applied to any value.
+let unknown = returnError("unknown");
+
+// __asInt(x)__. Returns a decimal number in a string into a number.
+let asInt = function (x) { return parseInt(x, 10); };
+
+// __tor.valueStringParsers__.
+// Provides a function that converts the string response to a GETINFO request
+// into JavaScript data.
 tor.valueStringParsers = {
   "version" : identity,
   "config-file" : identity,
   "config-defaults-file" : identity,
   "config-text" : identity,
-  "exit-policy/default" : identity,
-  "exit-policy/ipv4" : identity,
-  "exit-policy/ipv6" : identity,
-  "exit-policy/full" : identity,
-  "desc/id/" : identity,
-  "desc/name/" : identity,
-  "md/id/" : identity,
-  "md/name/" : identity,
-  "dormant" : identity,
-  "desc-annotations/id/" : identity,
-  "extra-info/digest/" : identity,
-  "ns/id/" : identity,
-  "ns/name/" : identity,
-  "ns/all/" : identity,
-  "ns/purpose/" : identity,
-  "desc/all-recent" : identity,
-  "network-status" : identity,
-  "address-mappings/" : identity,
-  "address-mappings/" : identity,
+  "exit-policy/" : notSupported,
+  "desc/id/" : notSupported,
+  "desc/name/" : notSupported,
+  "md/id/" : notSupported,
+  "md/name/" : notSupported,
+  "dormant" : notSupported,
+  "desc-annotations/id/" : notSupported,
+  "extra-info/digest/" : notSupported,
+  "ns/id/" : notSupported,
+  "ns/name/" : notSupported,
+  "ns/all/" : notSupported,
+  "ns/purpose/" : notSupported,
+  "desc/all-recent" : notSupported,
+  "network-status" : notSupported,
+  "address-mappings/" : notSupported,
+  "addr-mappings/" : deprecated,
   "address" : identity,
   "fingerprint" : identity,
-  "circuit-status" : identity,
-  "stream-status" : identity,
-  "orconn-status" : identity,
-  "entry-guards" : identity,
-  "traffic/read" : identity,
-  "traffic/written" : identity,
-  "accounting/enabled" : identity,
+  "circuit-status" : notSupported,
+  "stream-status" : notSupported,
+  "orconn-status" : notSupported,
+  "entry-guards" : notSupported,
+  "traffic/read" : asInt,
+  "traffic/written" : asInt,
+  "accounting/enabled" : function (x) { return x === "1"; },
   "accounting/hibernating" : identity,
-  "accounting/bytes" : identity,
-  "accounting/bytes-left" : identity,
-  "accounting/interval-start" : identity,
-  "accounting/interval-wake" : identity,
-  "accounting/interval-end" : identity,
-  "config/names" : identity,
-  "config/defaults" : identity,
-  "info/names" : identity,
-  "events/names" : identity,
-  "features/names" : identity,
-  "signal/names" : identity,
+  "accounting/bytes" : notSupported,
+  "accounting/bytes-left" : notSupported,
+  "accounting/interval-start" : notSupported,
+  "accounting/interval-wake" : notSupported,
+  "accounting/interval-end" : notSupported,
+  "config/names" : notSupported,
+  "config/defaults" : notSupported,
+  "info/names" : notSupported,
+  "events/names" : notSupported,
+  "features/names" : notSupported,
+  "signal/names" : notSupported,
   "ip-to-country/" : identity,
   "next-circuit/" : identity,
   "process/" : identity,
-  "process/descriptor-limit" : identity,
-  "dir/status-vote/current/consensus" : identity,
-  "dir/status/" : identity,
-  "dir/server/" : identity,
-  "net/listeners/" : identity,
-  "dir-usage" : identity
+  "process/descriptor-limit" : asInt,
+  "dir/status-vote/current/consensus" : notSupported,
+  "dir/status/" : notSupported,
+  "dir/server/" : notSupported,
+  "status/" : notSupported,
+  "net/listeners/" : notSupported,
+  "dir-usage" : notSupported
+};
+
+// __tor.getValueStringParser(key)__.
+// Takes a key a determines the parser function that should be used to
+// convert its corresponding valueString to JavaScript data.
+tor.getValueStringParser = function(key) {
+  return tor.valueStringParsers[key] ||
+         tor.valueStringParsers[key.substring(0, key.lastIndexOf("/") + 1)] ||
+         unknown;         
 };
 
 // __tor.parseValueString([key, valueString])__
 // Takes a [key, valueString] pair and converts it to useful data, appropriate to the key.
 tor.parseValueString = function ([key, valueString]) {
-  return [key, tor.valueStringParsers[key](valueString)];
+  return [key, tor.getValueStringParser(key)(valueString)];
 };
 
 // __tor.getInfoMultiple__.
@@ -371,13 +403,14 @@ tor.getInfo = function (controlSocket, key, onValue) {
   });
 };
 
-/*
+// __tor.controller__.
+// Creates a tor controller at the given host and port, with the given password.
+// onError returns asynchronously whenever a connection error occurs.
 tor.controller = function (host, port, password, onError) {
-  let socket = controlSocket(host, port, password, onError)
-  return { getInfo : function (info) { tor.getInfo(socket, info); };
-           addEvent : 
+  let socket = controlSocket(host, port, password, onError);
+  return { getInfo : function (key, log) { tor.getInfo(socket, key, log); } ,
+           close : socket.close };
 };
-*/
 
 // ## Export
 
@@ -404,8 +437,6 @@ let controlSocket = function (host, port, password, onError) {
   return (tor.controlSocketCache[dest] = tor.controlSocketCache[dest] ||
           tor.controlSocket(host, port, password, onError));
 };
-
-
 
 // Export the controlSocket function for external use.
 var EXPORTED_SYMBOLS = ["controlSocket"];
