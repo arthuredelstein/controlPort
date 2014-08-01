@@ -276,7 +276,7 @@ utils.extractor = function (regex) {
 
 // __utils.splitLines(string)__.
 // Splits a string into an array of strings, each corresponding to a line.
-utils.splitLines = function (string) { return string.split(/\r?\n/); }
+utils.splitLines = function (string) { return string.split(/\r?\n/); };
 
 // __utils.splitAtSpaces(string)__.
 // Splits a string into chunks between spaces. Does not split at spaces
@@ -375,6 +375,7 @@ info.routerStatusParser = function (valueString) {
       objects = [];
   for (let i in lines) {
     let data = lines[i].substring(2);
+    // Accumulate more maps with data, depending on the first character in the line.
     objects.push(
       { "r" : utils.listMapData(data, ["nickname", "identity", "digest", "publicationDate",    
                                        "publicationTime", "IP", "ORPort", "DirPort"]) ,
@@ -382,7 +383,7 @@ info.routerStatusParser = function (valueString) {
         "s" : { "statusFlags" : utils.splitAtSpaces(data) } ,
         "v" : { "version" : data } ,
         "w" : utils.listMapData(data, []) ,
-        "p" : { "portList" : data } ,
+        "p" : { "portList" : data.split(",") } ,
         "m" : utils.listMapData(data, [])
      }[lines[i].charAt(0)]
     );                                   
@@ -394,18 +395,25 @@ info.routerStatusParser = function (valueString) {
 // Parse the output of a circuit status line.
 info.circuitStatusParser = function (line) {
   let data = utils.listMapData(line, ["id","status","circuit"]),
-      circuit = data["circuit"];
+      circuit = data.circuit;
   // Parse out the individual circuit IDs and names.
   if (circuit) {
-    data["circuit"] = circuit.split(",").map(function (x) {
+    data.circuit = circuit.split(",").map(function (x) {
       return x.split(/~|=/);
     });
   }  
   return data;
 };
 
+// __info.streamStatusParser(line)__.
+// Parse the output of a stream status line.
+info.streamStatusParser = function (text) {
+  return utils.listMapData(text, ["StreamID", "StreamStatus",
+                                  "CircuitID", "Target"]);
+};
+
 // __info.parsers__.
-// A map of GETINFO keys to parsing function, which converts result text to JavaScript
+// A map of GETINFO keys to parsing function, which convert result strings to JavaScript
 // data.
 info.parsers = {
   "version" : utils.identity,
@@ -416,10 +424,7 @@ info.parsers = {
   "ns/name/" : info.routerStatusParser,
   "ip-to-country/" : utils.identity,
   "circuit-status" : info.applyPerLine(info.circuitStatusParser),
-  "stream-status" : info.applyPerLine(function (text) {
-                      return utils.listMapData(text, ["StreamID", "StreamStatus",
-                                                      "CircuitID", "Target"]);
-                    })
+  "stream-status" : info.applyPerLine(info.streamStatusParser)
 };
 
 // __info.getParser(key)__.
@@ -486,22 +491,32 @@ info.getInfo = function (aControlSocket, key, onValue) {
 
 let event = event || {};
 
-// __event.messageToData(message)__.
+// __event.parsers__.
+// A map of EVENT keys to parsing functions, which convert result strings to JavaScript
+// data.
+event.parsers = {
+  "stream" : info.streamStatusParser,
+  "circ" : info.circuitStatusParser
+};
+
+// __event.messageToData(type, message)__.
 // Extract the data from an event.
-event.parameterString = function (message) {
-  return message.match(/^650 \S+?\s(.*?)$/mi)[1];
+event.parameterString = function (type, message) {
+  let dataText = message.match(/^650 \S+?\s(.*?)$/mi)[1];
+  return dataText ? event.parsers[type.toLowerCase()](dataText) : null;
 };
 
 // __event.watchEvent(controlSocket, type, filter, onData)__.
 // Watches for a particular type of event. If filter(data) returns true, the event's
 // data is pass to the onData callback.
 event.watchEvent = function (controlSocket, type, filter, onData) {
-  controlSocket.addNotification(new RegExp("^650 " + type), function (message) {
-    let data = event.messageToData(message);
-    if (filter(data)) {
-      onData(data);
-    }
-  });
+  controlSocket.addNotificationCallback(new RegExp("^650 " + type, "mi"),
+    function (message) {
+      let data = event.messageToData(type, message);
+      if (filter === null || filter(data)) {
+        onData(data);
+      }
+    });
 };
 
 // ## tor
@@ -516,6 +531,9 @@ tor.controller = function (host, port, password, onError) {
   return { getInfo : function (key, log) { info.getInfo(socket, key, log); } ,
            getInfoMultiple : function (keys, log) {
              info.getInfoMultiple(socket, keys, log);
+           },
+           watchEvent : function (type, filter, onData) {
+             event.watchEvent(socket, type, filter, onData);
            },
            close : socket.close };
 };
@@ -547,7 +565,7 @@ let controller = function (host, port, password, onError) {
           tor.controller(host, port, password, onError));
 };
 
-// Export the controller function for external use.
+// Export the controller function for external use.g
 var EXPORTED_SYMBOLS = ["controller"];
 
 // __nodeData(controller, id, onResult)__.
