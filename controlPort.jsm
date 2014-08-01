@@ -324,17 +324,15 @@ utils.mergeObjects = function (arrayOfObjects) {
 //     //      "address" : "95.78.59.36:80", "REASON" : "CANT_ATTACH"}"
 utils.listMapData = function (parameterString, listNames) {
   let parameters = utils.splitAtSpaces(parameterString),
-      parameterNames = listNames.slice(),
       dataMap = {};
   // Find any key-value parameters and them. Also assign names to non-key parameters.
-  for (let i = 0; i < parameters.length; ++i) {
+  for (let i = 0; i < listNames.length; ++i) {
+    dataMap[listNames[i]] = parameters[i];
+  }
+  for (let i = listNames.length; i < parameters.length; ++i) {
     let [key, value] = utils.splitAtEquals(parameters[i]);
     if (key && value) {
       dataMap[key] = value;
-    } else {
-      if (parameterNames.length > 0) {
-        dataMap[parameterNames.shift()] = parameters[i];
-      }
     }
   }
   return dataMap;
@@ -358,8 +356,17 @@ let info = info || {};
 //     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
 info.keyValueStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
 
+// __info.applyPerLine__.
+// Returns a function that splits text into lines,
+// and applies transformFunction to each line.
+info.applyPerLine = function (transformFunction) {
+  return function (text) {
+    return utils.splitLines(text).map(transformFunction);
+  };
+};
+
 // __routerStatusParser(valueString)__.
-// see "router status entry" at
+// search for "router status entry" at
 // https://gitweb.torproject.org/torspec.git/blob/HEAD:/dir-spec.txt
 info.routerStatusParser = function (valueString) {
   let lines = utils.splitLines(valueString),
@@ -367,31 +374,46 @@ info.routerStatusParser = function (valueString) {
   for (let i in lines) {
     let data = lines[i].substring(2);
     objects.push(
-    { "r" : utils.listMapData(data, ["nickname", "identity", "digest", "publicationDate",    
-                                     "publicationTime", "IP", "ORPort", "DirPort"]) ,
-      "a" : { "IPv6" :  data } ,
-      "s" : { "statusFlags" : utils.splitAtSpaces(data) } ,
-      "v" : { "version" : data } ,
-      "w" : utils.listMapData(data, []) }[lines[i].charAt(0)]
-     );                                   
+      { "r" : utils.listMapData(data, ["nickname", "identity", "digest", "publicationDate",    
+                                       "publicationTime", "IP", "ORPort", "DirPort"]) ,
+        "a" : { "IPv6" :  data } ,
+        "s" : { "statusFlags" : utils.splitAtSpaces(data) } ,
+        "v" : { "version" : data } ,
+        "w" : utils.listMapData(data, []) ,
+        "p" : { "portList" : data } ,
+        "m" : utils.listMapData(data, [])
+     }[lines[i].charAt(0)]
+    );                                   
   }
   return utils.mergeObjects(objects);
 };
 
+// __info.circuitStatusParser__.
+// Parse the output of a circuit status line.
+info.circuitStatusParser = function (line) {
+  let data = utils.listMapData(line, ["id","status","circuit"]);
+  data["circuit"] = data["circuit"].split(",").map(function (x) {
+    return x.split(/~|=/);
+  });
+  return data;
+};
+
 // __info.parsers__.
-// Provides a function that parses the string response to a GETINFO request
-// and converts it to JavaScript data.
+// A map of GETINFO keys to parsing function, which converts result text to JavaScript
+// data.
 info.parsers = {
   "version" : utils.identity,
   "config-file" : utils.identity,
   "config-defaults-file" : utils.identity,
   "config-text" : utils.identity,
-  "ns/id/" : "not supported",
+  "ns/id/" : info.routerStatusParser,
+  "ns/name/" : info.routerStatusParser,
   "ip-to-country/" : utils.identity,
+  "circuit-status" : info.applyPerLine(info.circuitStatusParser)
 };
 
 // __info.getParser(key)__.
-// Takes a key a determines the parser function that should be used to
+// Takes a key and determines the parser function that should be used to
 // convert its corresponding valueString to JavaScript data.
 info.getParser = function(key) {
   return info.parsers[key] ||
@@ -418,7 +440,7 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
   if (!(onMap instanceof Function)) {
     throw new Error("onMap argument should be a function");
   }
-  let parsers = keys.map(getParser);
+  let parsers = keys.map(info.getParser);
   if (parsers.indexOf("unknown") !== -1) {
     throw new Error("unknown key");
   }
@@ -514,15 +536,14 @@ let controller = function (host, port, password, onError) {
 // Export the controller function for external use.
 var EXPORTED_SYMBOLS = ["controller"];
 
-// __nodeData(id, onResult)__.
+// __nodeData(controller, id, onResult)__.
 // Requests the IP, country code, and name of a node with given ID.
 // Returns result in onResult.
 // Example: nodeData("20BC91DC525C3DC9974B29FBEAB51230DE024C44", show);
-var nodeData = function (id, onResult) {
-  c.getInfo("ns/id/" + id, function (data) {
-    let name = data[1], ip = data[6];
-    c.getInfo("ip-to-country/" + ip, function (data) {
-      onResult({ name : name, id : id , ip : ip , country : data[0] });
+var nodeData = function (controller, id, onResult) {
+  controller.getInfo("ns/id/" + id, function (status) {
+    controller.getInfo("ip-to-country/" + status.IP, function (country) {
+      onResult({ name : status.nickname, id : id , ip : status.IP , country : country });
     });
   });
 };
