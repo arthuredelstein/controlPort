@@ -323,12 +323,14 @@ utils.mergeObjects = function (arrayOfObjects) {
 //     // --> {"streamID" : "40", "event" : "FAILED", "circuitID" : "0",
 //     //      "address" : "95.78.59.36:80", "REASON" : "CANT_ATTACH"}"
 utils.listMapData = function (parameterString, listNames) {
+  // Split out the space-delimited parameters.
   let parameters = utils.splitAtSpaces(parameterString),
       dataMap = {};
-  // Find any key-value parameters and them. Also assign names to non-key parameters.
+  // Assign listNames to the first n = listNames.length parameters.
   for (let i = 0; i < listNames.length; ++i) {
     dataMap[listNames[i]] = parameters[i];
   }
+  // Read key-value pairs and copy these to the dataMap.
   for (let i = listNames.length; i < parameters.length; ++i) {
     let [key, value] = utils.splitAtEquals(parameters[i]);
     if (key && value) {
@@ -356,7 +358,7 @@ let info = info || {};
 //     250-version=0.2.6.0-alpha-dev (git-b408125288ad6943)
 info.keyValueStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/gmi);
 
-// __info.applyPerLine__.
+// __info.applyPerLine(transformFunction)__.
 // Returns a function that splits text into lines,
 // and applies transformFunction to each line.
 info.applyPerLine = function (transformFunction) {
@@ -365,7 +367,7 @@ info.applyPerLine = function (transformFunction) {
   };
 };
 
-// __routerStatusParser(valueString)__.
+// __info.routerStatusParser(valueString)__.
 // search for "router status entry" at
 // https://gitweb.torproject.org/torspec.git/blob/HEAD:/dir-spec.txt
 info.routerStatusParser = function (valueString) {
@@ -388,13 +390,17 @@ info.routerStatusParser = function (valueString) {
   return utils.mergeObjects(objects);
 };
 
-// __info.circuitStatusParser__.
+// __info.circuitStatusParser(line)__.
 // Parse the output of a circuit status line.
 info.circuitStatusParser = function (line) {
-  let data = utils.listMapData(line, ["id","status","circuit"]);
-  data["circuit"] = data["circuit"].split(",").map(function (x) {
-    return x.split(/~|=/);
-  });
+  let data = utils.listMapData(line, ["id","status","circuit"]),
+      circuit = data["circuit"];
+  // Parse out the individual circuit IDs and names.
+  if (circuit) {
+    data["circuit"] = circuit.split(",").map(function (x) {
+      return x.split(/~|=/);
+    });
+  }  
   return data;
 };
 
@@ -409,7 +415,11 @@ info.parsers = {
   "ns/id/" : info.routerStatusParser,
   "ns/name/" : info.routerStatusParser,
   "ip-to-country/" : utils.identity,
-  "circuit-status" : info.applyPerLine(info.circuitStatusParser)
+  "circuit-status" : info.applyPerLine(info.circuitStatusParser),
+  "stream-status" : info.applyPerLine(function (text) {
+                      return utils.listMapData(text, ["StreamID", "StreamStatus",
+                                                      "CircuitID", "Target"]);
+                    })
 };
 
 // __info.getParser(key)__.
@@ -424,16 +434,20 @@ info.getParser = function(key) {
 // __info.stringToKeyValuePair(string)__.
 // Converts a key-value string to a key, value pair as from GETINFO. 
 info.stringToKeyValuePair = function (string) {
+  // key should look something like `250+circuit-status=` or `250-circuit-status=...`
   let key = string.match(/^250[\+-](.+?)=/mi)[1],
+      // matchResult finds a single-line result for `250-` or a multi-line one for `250+`.
       matchResult = string.match(/250\-.+?=(.*?)$/mi) ||
                     string.match(/250\+.+?=([\s\S]*?)^\.$/mi),
+      // Retrieve the captured group (the text of the value in the key-value pair)
       valueString = matchResult ? matchResult[1] : null;
+  // Return [key, value] where the latter has been parsed according to the key requested.
   return [key, info.getParser(key)(valueString)];
 };
 
-// __info.getInfoMultiple(controlSocket, keys, onMap)__.
+// __info.getInfoMultiple(aControlSocket, keys, onMap)__.
 // Requests info for an array of keys. Passes a map of keys to values to onMap function.
-info.getInfoMultiple = function (controlSocket, keys, onMap) {
+info.getInfoMultiple = function (aControlSocket, keys, onMap) {
   if (!(keys instanceof Array)) {
     throw new Error("keys argument should be an array");
   }
@@ -447,7 +461,7 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
   if (parsers.indexOf("not supported") !== -1) {
     throw new Error("unsupported key");
   }
-  controlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
+  aControlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
     onMap(utils.pairsToMap(info.keyValueStringsFromMessage(message)
                                .map(info.stringToKeyValuePair)));
   });
@@ -455,14 +469,14 @@ info.getInfoMultiple = function (controlSocket, keys, onMap) {
 
 // __info.getInfo(controlSocket, key, onValue)__.
 // Requests info for a single key. Passes onValue the value for that key.
-info.getInfo = function (controlSocket, key, onValue) {
+info.getInfo = function (aControlSocket, key, onValue) {
   if (!utils.isString(key)) {
     throw new Error("key argument should be a string");
   }
   if (!(onValue instanceof Function)) {
     throw new Error("onValue argument should be a function");
   }
-  info.getInfoMultiple(controlSocket, [key], function (valueMap) {
+  info.getInfoMultiple(aControlSocket, [key], function (valueMap) {
     onValue(valueMap[key]);
   });
 };
