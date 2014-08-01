@@ -138,7 +138,7 @@ io.onLineFromOnMessage = function (onMessage) {
                                    pendingLines[0].startsWith(line.substring(0,3)))) {
       // Combine pending lines to form message.
       let message = pendingLines.join("\r\n");
-      // Wipe pendingLines before we call onMessage, in case an error is thrown.
+      // Wipe pendingLines before we call onMessage, in case onMessage throws an error.
       pendingLines = [];
       // Pass multiline message to onMessage.
       onMessage(message);
