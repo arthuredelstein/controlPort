@@ -136,9 +136,12 @@ io.onLineFromOnMessage = function (onMessage) {
     // If line is the last in a message, then pass on the full multiline message.
     if (line.match(/^\d\d\d /) && (pendingLines.length == 1 ||
                                    pendingLines[0].startsWith(line.substring(0,3)))) {
-      onMessage(pendingLines.join("\r\n"));
-      // Get ready for the next message.
+      // Combine pending lines to form message.
+      let message = pendingLines.join("\r\n");
+      // Wipe pendingLines before we call onMessage, in case an error is thrown.
       pendingLines = [];
+      // Pass multiline message to onMessage.
+      onMessage(message);
     }
   };
 };
@@ -503,6 +506,7 @@ event.parsers = {
 // Extract the data from an event.
 event.parameterString = function (type, message) {
   let dataText = message.match(/^650 \S+?\s(.*?)$/mi)[1];
+  console.log(dataText);
   return dataText ? event.parsers[type.toLowerCase()](dataText) : null;
 };
 
@@ -512,7 +516,9 @@ event.parameterString = function (type, message) {
 event.watchEvent = function (controlSocket, type, filter, onData) {
   controlSocket.addNotificationCallback(new RegExp("^650 " + type, "mi"),
     function (message) {
+      console.log(message);
       let data = event.messageToData(type, message);
+      console.log(data);
       if (filter === null || filter(data)) {
         onData(data);
       }
