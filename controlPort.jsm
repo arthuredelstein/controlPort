@@ -291,16 +291,6 @@ utils.splitAtSpaces = utils.extractor(/((\S*?"(.*?)")+\S*|\S+)/g);
 // inside pairs of quotation marks.
 utils.splitAtEquals = utils.extractor(/(([^=]*?"(.*?)")+[^=]*|[^=]+)/g);
 
-// __utils.pairsToMap(pairs)__.
-// Convert a series of pairs [[a1, b1], [a2, b2], ...] to a map {a1 : b1, a2 : b2 ...}.
-utils.pairsToMap = function (pairs) {
-  let result = {};
-  pairs.map(function ([a, b]) {
-    result[a] = b;
-  });
-  return result;
-};
-
 // __utils.mergeObjects(arrayOfObjects)__.
 // Takes an array of objects like [{"a":"b"},{"c":"d"}] and merges to a single object.
 // Pure function.
@@ -439,9 +429,9 @@ info.getParser = function(key) {
          "unknown";         
 };
 
-// __info.stringToKeyValuePair(string)__.
-// Converts a key-value string to a key, value pair as from GETINFO. 
-info.stringToKeyValuePair = function (string) {
+// __info.stringToValue(string)__.
+// Converts a key-value string as from GETINFO to a value. 
+info.stringToValue = function (string) {
   // key should look something like `250+circuit-status=` or `250-circuit-status=...`
   let key = string.match(/^250[\+-](.+?)=/mi)[1],
       // matchResult finds a single-line result for `250-` or a multi-line one for `250+`.
@@ -449,18 +439,19 @@ info.stringToKeyValuePair = function (string) {
                     string.match(/250\+.+?=([\s\S]*?)^\.$/mi),
       // Retrieve the captured group (the text of the value in the key-value pair)
       valueString = matchResult ? matchResult[1] : null;
-  // Return [key, value] where the latter has been parsed according to the key requested.
-  return [key, info.getParser(key)(valueString)];
+  // Return value where the latter has been parsed according to the key requested.
+  info.getParser(key)(valueString);
 };
 
-// __info.getInfoMultiple(aControlSocket, keys, onMap)__.
-// Requests info for an array of keys. Passes a map of keys to values to onMap function.
-info.getInfoMultiple = function (aControlSocket, keys, onMap) {
+// __info.getInfoMultiple(aControlSocket, keys, onData)__.
+// Sends GETINFO for an array of keys. Passes onData an array of their respective results,
+// in order.
+info.getInfoMultiple = function (aControlSocket, keys, onData) {
   if (!(keys instanceof Array)) {
     throw new Error("keys argument should be an array");
   }
-  if (!(onMap instanceof Function)) {
-    throw new Error("onMap argument should be a function");
+  if (!(onData instanceof Function)) {
+    throw new Error("onData argument should be a function");
   }
   let parsers = keys.map(info.getParser);
   if (parsers.indexOf("unknown") !== -1) {
@@ -470,13 +461,12 @@ info.getInfoMultiple = function (aControlSocket, keys, onMap) {
     throw new Error("unsupported key");
   }
   aControlSocket.sendCommand("getinfo " + keys.join(" "), function (message) {
-    onMap(utils.pairsToMap(info.keyValueStringsFromMessage(message)
-                               .map(info.stringToKeyValuePair)));
+    onData(info.keyValueStringsFromMessage(message).map(info.stringToValue));
   });
 };
 
 // __info.getInfo(controlSocket, key, onValue)__.
-// Requests info for a single key. Passes onValue the value for that key.
+// Sends GETINFO for a single key. Passes onValue the value for that key.
 info.getInfo = function (aControlSocket, key, onValue) {
   if (!utils.isString(key)) {
     throw new Error("key argument should be a string");
@@ -484,8 +474,8 @@ info.getInfo = function (aControlSocket, key, onValue) {
   if (!(onValue instanceof Function)) {
     throw new Error("onValue argument should be a function");
   }
-  info.getInfoMultiple(aControlSocket, [key], function (valueMap) {
-    onValue(valueMap[key]);
+  info.getInfoMultiple(aControlSocket, [key], function (data) {
+    onValue(data[0]);
   });
 };
 
@@ -504,7 +494,7 @@ event.parsers = {
 
 // __event.messageToData(type, message)__.
 // Extract the data from an event.
-event.parameterString = function (type, message) {
+event.messageToData = function (type, message) {
   let dataText = message.match(/^650 \S+?\s(.*?)$/mi)[1];
   console.log(dataText);
   return dataText ? event.parsers[type.toLowerCase()](dataText) : null;
@@ -514,11 +504,9 @@ event.parameterString = function (type, message) {
 // Watches for a particular type of event. If filter(data) returns true, the event's
 // data is pass to the onData callback.
 event.watchEvent = function (controlSocket, type, filter, onData) {
-  controlSocket.addNotificationCallback(new RegExp("^650 " + type, "mi"),
+  controlSocket.addNotificationCallback(new RegExp("^650." + type, "i"),
     function (message) {
-      console.log(message);
       let data = event.messageToData(type, message);
-      console.log(data);
       if (filter === null || filter(data)) {
         onData(data);
       }
@@ -573,15 +561,3 @@ let controller = function (host, port, password, onError) {
 
 // Export the controller function for external use.g
 var EXPORTED_SYMBOLS = ["controller"];
-
-// __nodeData(controller, id, onResult)__.
-// Requests the IP, country code, and name of a node with given ID.
-// Returns result in onResult.
-// Example: nodeData("20BC91DC525C3DC9974B29FBEAB51230DE024C44", show);
-var nodeData = function (controller, id, onResult) {
-  controller.getInfo("ns/id/" + id, function (status) {
-    controller.getInfo("ip-to-country/" + status.IP, function (country) {
-      onResult({ name : status.nickname, id : id , ip : status.IP , country : country });
-    });
-  });
-};
