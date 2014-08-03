@@ -53,30 +53,44 @@ let assignCircuitsForDomains = function (aController) {
 
 let collectDomainNodes = function (aController) {
   collectBuiltCircuitData(aController);
-  assignCircuitsForDomains(aController);
 };
 
 ////////// popup
 
 let nodeLines = function (nodeData) {
   let result = ["This browser"];
-  for (i in nodeData) {
-    result.push(nodeData[i].ip + " (" + nodeData[i].country + ")");
+  for (let {ip, county} of nodeData) {
+    result.push(ip + " (" + country + ")");
   }
   result.push("Internet");
   return result;
 };
 
-let setCircuitDisplay = function (domain, nodeData) {
+let updateCircuitDisplay = function () {
+  let domain = gBrowser.selectedBrowser.currentURI.host;
   // Update the displayed domain.
   document.querySelector("svg#tor-circuit text#domain").innerHTML = "(" + domain + "):";
   // Update the display information for the relay nodes.
-  let diagramNodes = document.querySelectorAll("svg#tor-circuit text.node"),
-      lines = nodeLines(nodeData);       
-  for (let i = 0; i < diagramNodes.length; ++i) {
-    diagramNodes[i].innerHTML = lines[i];
+  if (nodeData) {
+  	let diagramNodes = document.querySelectorAll("svg#tor-circuit text.node"),
+  	    lines = nodeLines(nodeData);       
+  	for (let i = 0; i < diagramNodes.length; ++i) {
+  	  diagramNodes[i].innerHTML = lines[i];
+  	}
   }
 };
 
-
-
+let syncDisplayWithSelectedTab = function () {
+  // Whenever a different tab is selected, change the circuit display
+  // to show the circuit for that tab's domain.
+  gBrowser.tabContainer.addEventListener("TabSelect", function (event) {
+    updateCircuitDisplay();
+  });
+  // If the currently selected tab has been sent to a new location,
+  // update the circuit to reflect that.
+  gBrowser.addTabsProgressListener({ onLocationChange : function (aBrowser) {
+    if (aBrowser == gBrowser.selectedBrowser) {
+      updateCircuitDisplay();
+    }
+  } });
+};

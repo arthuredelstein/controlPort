@@ -296,8 +296,7 @@ utils.splitAtEquals = utils.extractor(/(([^=]*?"(.*?)")+[^=]*|[^=]+)/g);
 // Pure function.
 utils.mergeObjects = function (arrayOfObjects) {
   let result = {};
-  for (let i in arrayOfObjects) {
-    let obj = arrayOfObjects[i];
+  for (let obj of arrayOfObjects) {
     for (var key in obj) {
       result[key] = obj[key];
     }
@@ -361,13 +360,14 @@ info.applyPerLine = function (transformFunction) {
 };
 
 // __info.routerStatusParser(valueString)__.
-// search for "router status entry" at
+// Parses a router status entry as, described in
 // https://gitweb.torproject.org/torspec.git/blob/HEAD:/dir-spec.txt
+// (search for "router status entry")
 info.routerStatusParser = function (valueString) {
   let lines = utils.splitLines(valueString),
       objects = [];
-  for (let i in lines) {
-    let data = lines[i].substring(2);
+  for (let line of lines) {
+    let data = line.substring(2);
     // Accumulate more maps with data, depending on the first character in the line.
     objects.push(
       { "r" : utils.listMapData(data, ["nickname", "identity", "digest", "publicationDate",    
@@ -378,7 +378,7 @@ info.routerStatusParser = function (valueString) {
         "w" : utils.listMapData(data, []) ,
         "p" : { "portList" : data.split(",") } ,
         "m" : utils.listMapData(data, [])
-     }[lines[i].charAt(0)]
+     }[line.charAt(0)]
     );                                   
   }
   return utils.mergeObjects(objects);
