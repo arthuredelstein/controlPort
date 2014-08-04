@@ -496,7 +496,6 @@ event.parsers = {
 // Extract the data from an event.
 event.messageToData = function (type, message) {
   let dataText = message.match(/^650 \S+?\s(.*?)$/mi)[1];
-  console.log(dataText);
   return dataText ? event.parsers[type.toLowerCase()](dataText) : null;
 };
 
