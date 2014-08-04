@@ -355,7 +355,7 @@ info.keyValueStringsFromMessage = utils.extractor(/^(250\+[\s\S]+?^\.|250-.+?)$/
 // and applies transformFunction to each line.
 info.applyPerLine = function (transformFunction) {
   return function (text) {
-    return utils.splitLines(text).map(transformFunction);
+    return utils.splitLines(text.trim()).map(transformFunction);
   };
 };
 
