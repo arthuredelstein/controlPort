@@ -440,7 +440,7 @@ info.stringToValue = function (string) {
       // Retrieve the captured group (the text of the value in the key-value pair)
       valueString = matchResult ? matchResult[1] : null;
   // Return value where the latter has been parsed according to the key requested.
-  info.getParser(key)(valueString);
+  return info.getParser(key)(valueString);
 };
 
 // __info.getInfoMultiple(aControlSocket, keys, onData)__.
