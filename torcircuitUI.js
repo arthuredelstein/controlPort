@@ -51,7 +51,7 @@ let localizedCountryNameFromCode = function (countryCode) {
   } catch (e) {
     return countryCode.toUpperCase();
   }
-}
+};
 
 // __nodeLines(nodeData)__.
 // Takes a nodeData array of three items each like
